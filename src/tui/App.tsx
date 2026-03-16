@@ -47,6 +47,35 @@ function ensureVisibleCursor(value: string): string {
   return `${value}█`;
 }
 
+function renderInputWithCursor(value: string, cursor: number, maxLength: number): string {
+  const safeCursor = clamp(cursor, 0, value.length);
+  const withCursor = `${value.slice(0, safeCursor)}█${value.slice(safeCursor)}`;
+
+  if (withCursor.length <= maxLength) {
+    return withCursor;
+  }
+
+  const target = Math.max(0, safeCursor - Math.floor((maxLength - 1) / 2));
+  const maxStart = Math.max(0, withCursor.length - maxLength);
+  const start = clamp(target, 0, maxStart);
+  const end = Math.min(withCursor.length, start + maxLength);
+  const body = withCursor.slice(start, end);
+
+  if (start > 0 && end < withCursor.length) {
+    return `…${body.slice(1, -1)}…`;
+  }
+
+  if (start > 0) {
+    return `…${body.slice(1)}`;
+  }
+
+  if (end < withCursor.length) {
+    return `${body.slice(0, -1)}…`;
+  }
+
+  return body;
+}
+
 function fitInputPreview(text: string, maxLength: number): string {
   if (text.length <= maxLength) {
     return text;
@@ -339,6 +368,7 @@ export function App(props: AppProps): React.ReactElement {
   const { exit } = useApp();
   const inputEnabled = Boolean(process.stdin.isTTY);
   const [input, setInput] = useState("");
+  const [inputCursor, setInputCursor] = useState(0);
   const [turnIndex, setTurnIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [weaveMode, setWeaveMode] = useState<WeaveMode>("off");
@@ -433,6 +463,7 @@ export function App(props: AppProps): React.ReactElement {
                       argsText: request.argsText || "{}"
                     });
                     setInput("");
+                    setInputCursor(0);
                     setSystemNote("Step Gate: Enter=放行, E=编辑参数, S=跳过, Q=终止本轮");
                   });
                 }
@@ -446,6 +477,7 @@ export function App(props: AppProps): React.ReactElement {
         approvalResolverRef.current = null;
         setPendingApproval(null);
         setApprovalEditing(false);
+        setInputCursor(0);
         setBusy(false);
       }
     },
@@ -478,21 +510,21 @@ export function App(props: AppProps): React.ReactElement {
     () => buildWeaveTreeLines(uiState.weaveDagNodes, expandedDagNodeIds),
     [uiState.weaveDagNodes, expandedDagNodeIds]
   );
-  const weaveNodeIds = useMemo(
-    () => uiState.weaveDagNodes.map((node) => node.id).sort(compareNodeId),
-    [uiState.weaveDagNodes]
+  const visibleDagNodeIds = useMemo(
+    () => weaveTreeLines.map((line) => line.id).sort(compareNodeId),
+    [weaveTreeLines]
   );
 
   useEffect(() => {
-    if (weaveNodeIds.length === 0) {
+    if (visibleDagNodeIds.length === 0) {
       setSelectedDagNodeId((prev) => (prev ? "" : prev));
       setExpandedDagNodeIds((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
-    const latestNodeId = weaveNodeIds[weaveNodeIds.length - 1];
+    const latestNodeId = visibleDagNodeIds[visibleDagNodeIds.length - 1];
 
     setSelectedDagNodeId((prev) => {
-      if (!prev || !weaveNodeIds.includes(prev)) {
+      if (!prev || !visibleDagNodeIds.includes(prev)) {
         return latestNodeId;
       }
 
@@ -506,7 +538,7 @@ export function App(props: AppProps): React.ReactElement {
 
       return new Set<string>([latestNodeId]);
     });
-  }, [weaveNodeIds]);
+  }, [visibleDagNodeIds]);
 
   useInput((value, key) => {
     if (key.ctrl && value.toLowerCase() === "c") {
@@ -546,17 +578,47 @@ export function App(props: AppProps): React.ReactElement {
         if (key.escape) {
           setApprovalEditing(false);
           setInput("");
+          setInputCursor(0);
           setSystemNote("已退出参数编辑，Step Gate: Enter=放行, E=编辑, S=跳过, Q=终止");
           return;
         }
 
-        if (key.backspace || key.delete) {
-          setInput((prev) => prev.slice(0, -1));
+        if (key.leftArrow) {
+          setInputCursor((prev) => Math.max(0, prev - 1));
+          return;
+        }
+
+        if (key.rightArrow) {
+          setInputCursor((prev) => Math.min(input.length, prev + 1));
+          return;
+        }
+
+        if (key.backspace) {
+          setInput((prev) => {
+            if (inputCursor <= 0) {
+              return prev;
+            }
+
+            return `${prev.slice(0, inputCursor - 1)}${prev.slice(inputCursor)}`;
+          });
+          setInputCursor((prev) => Math.max(0, prev - 1));
+          return;
+        }
+
+        if (key.delete) {
+          setInput((prev) => {
+            if (inputCursor >= prev.length) {
+              return prev;
+            }
+
+            return `${prev.slice(0, inputCursor)}${prev.slice(inputCursor + 1)}`;
+          });
           return;
         }
 
         if (value) {
-          setInput((prev) => prev + value);
+          setInput((prev) => `${prev.slice(0, inputCursor)}${value}${prev.slice(inputCursor)}`);
+          setInputCursor((prev) => prev + value.length);
         }
         return;
       }
@@ -573,6 +635,7 @@ export function App(props: AppProps): React.ReactElement {
       if (lower === "e") {
         setApprovalEditing(true);
         setInput(pendingApproval.argsText || "{}");
+        setInputCursor((pendingApproval.argsText || "{}").length);
         setSystemNote("请输入新的 JSON 参数后回车提交，Esc 取消编辑。");
         return;
       }
@@ -594,17 +657,37 @@ export function App(props: AppProps): React.ReactElement {
       return;
     }
 
-    if (input.trim() === "" && weaveNodeIds.length > 0 && key.upArrow) {
-      const currentIndex = Math.max(0, weaveNodeIds.indexOf(selectedDagNodeId));
+    if (input.trim() === "" && visibleDagNodeIds.length > 0 && key.upArrow) {
+      const currentIndex = Math.max(0, visibleDagNodeIds.indexOf(selectedDagNodeId));
       const nextIndex = Math.max(0, currentIndex - 1);
-      setSelectedDagNodeId(weaveNodeIds[nextIndex]);
+      setSelectedDagNodeId(visibleDagNodeIds[nextIndex]);
       return;
     }
 
-    if (input.trim() === "" && weaveNodeIds.length > 0 && key.downArrow) {
-      const currentIndex = Math.max(0, weaveNodeIds.indexOf(selectedDagNodeId));
-      const nextIndex = Math.min(weaveNodeIds.length - 1, currentIndex + 1);
-      setSelectedDagNodeId(weaveNodeIds[nextIndex]);
+    if (input.trim() === "" && visibleDagNodeIds.length > 0 && key.downArrow) {
+      const currentIndex = Math.max(0, visibleDagNodeIds.indexOf(selectedDagNodeId));
+      const nextIndex = Math.min(visibleDagNodeIds.length - 1, currentIndex + 1);
+      setSelectedDagNodeId(visibleDagNodeIds[nextIndex]);
+      return;
+    }
+
+    if (key.leftArrow) {
+      setInputCursor((prev) => Math.max(0, prev - 1));
+      return;
+    }
+
+    if (key.rightArrow) {
+      setInputCursor((prev) => Math.min(input.length, prev + 1));
+      return;
+    }
+
+    if (key.home) {
+      setInputCursor(0);
+      return;
+    }
+
+    if (key.end) {
+      setInputCursor(input.length);
       return;
     }
 
@@ -638,17 +721,37 @@ export function App(props: AppProps): React.ReactElement {
       }
 
       setInput("");
+      setInputCursor(0);
       void processTurn(trimmed);
       return;
     }
 
-    if (key.backspace || key.delete) {
-      setInput((prev) => prev.slice(0, -1));
+    if (key.backspace) {
+      setInput((prev) => {
+        if (inputCursor <= 0) {
+          return prev;
+        }
+
+        return `${prev.slice(0, inputCursor - 1)}${prev.slice(inputCursor)}`;
+      });
+      setInputCursor((prev) => Math.max(0, prev - 1));
+      return;
+    }
+
+    if (key.delete) {
+      setInput((prev) => {
+        if (inputCursor >= prev.length) {
+          return prev;
+        }
+
+        return `${prev.slice(0, inputCursor)}${prev.slice(inputCursor + 1)}`;
+      });
       return;
     }
 
     if (value) {
-      setInput((prev) => prev + value);
+      setInput((prev) => `${prev.slice(0, inputCursor)}${value}${prev.slice(inputCursor)}`);
+      setInputCursor((prev) => prev + value.length);
     }
   }, { isActive: inputEnabled });
 
@@ -815,12 +918,14 @@ export function App(props: AppProps): React.ReactElement {
       <Box marginTop={0} borderStyle="single" borderColor={THEME.primary} paddingX={1}>
         <Text color={THEME.primary}>{pendingApproval && approvalEditing ? "edit(args) ▸ " : `你(${turnIndex + 1}) ▸ `}</Text>
         <Text color={THEME.text}>
-          {ensureVisibleCursor(
-            fitInputPreview(
-              input || (busy ? (pendingApproval ? "(等待 Step Gate 决策...)" : "(处理中，稍候...)") : ""),
-              inputTextMax
-            )
-          )}
+          {input
+            ? renderInputWithCursor(input, inputCursor, inputTextMax)
+            : ensureVisibleCursor(
+                fitInputPreview(
+                  busy ? (pendingApproval ? "(等待 Step Gate 决策...)" : "(处理中，稍候...)") : "",
+                  inputTextMax
+                )
+              )}
         </Text>
       </Box>
     </Box>
