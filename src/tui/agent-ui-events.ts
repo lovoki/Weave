@@ -53,6 +53,19 @@ export interface WeaveDagDetailEvent {
   text: string;
 }
 
+export interface ApprovalPendingEvent {
+  runId: string;
+  toolName: string;
+  toolCallId: string;
+}
+
+export interface ApprovalResolvedEvent {
+  runId: string;
+  toolName: string;
+  toolCallId: string;
+  action: "approve" | "edit" | "skip" | "abort";
+}
+
 export class AgentUiEventGateway extends EventEmitter {
   mapFromRuntime(event: AgentRunEvent): void {
     if (event.type === "run.start") {
@@ -103,6 +116,25 @@ export class AgentUiEventGateway extends EventEmitter {
         runId: event.runId,
         errorMessage: event.payload?.errorMessage ?? "未知错误"
       } satisfies AgentErrorEvent);
+      return;
+    }
+
+    if (event.type === "node.pending_approval") {
+      this.emit("approval:pending", {
+        runId: event.runId,
+        toolName: event.payload?.toolName ?? "unknown",
+        toolCallId: event.payload?.toolCallId ?? ""
+      } satisfies ApprovalPendingEvent);
+      return;
+    }
+
+    if (event.type === "node.approval.resolved") {
+      this.emit("approval:resolved", {
+        runId: event.runId,
+        toolName: event.payload?.toolName ?? "unknown",
+        toolCallId: event.payload?.toolCallId ?? "",
+        action: event.payload?.approvalAction ?? "approve"
+      } satisfies ApprovalResolvedEvent);
       return;
     }
 

@@ -134,6 +134,8 @@ function buildWeaveTreeLines(
     startedAtMs: number;
     endedAtMs?: number;
     updatedAtMs: number;
+    pausedAtMs?: number;
+    pausedDurationMs: number;
     details: string[];
   }>,
   expandedNodeIds: Set<string>
@@ -152,6 +154,8 @@ function buildWeaveTreeLines(
       startedAtMs: number;
       endedAtMs?: number;
       updatedAtMs: number;
+      pausedAtMs?: number;
+      pausedDurationMs: number;
       details: string[];
     }>
   >();
@@ -178,6 +182,8 @@ function buildWeaveTreeLines(
       startedAtMs: number;
       endedAtMs?: number;
       updatedAtMs: number;
+      pausedAtMs?: number;
+      pausedDurationMs: number;
       details: string[];
     }>,
     prefix: string,
@@ -187,11 +193,12 @@ function buildWeaveTreeLines(
       const isLast = index === list.length - 1;
       const branch = depth === 0 ? "" : `${isLast ? "└─" : "├─"} `;
       const branchPrefix = `${prefix}${branch}`;
-      const durationMs = (node.endedAtMs ?? node.updatedAtMs) - node.startedAtMs;
+      const activePausedMs = node.pausedAtMs ? Math.max(0, Date.now() - node.pausedAtMs) : 0;
+      const pausedDurationMs = Math.max(0, (node.pausedDurationMs ?? 0) + activePausedMs);
+      const durationMs = Math.max(0, (node.endedAtMs ?? node.updatedAtMs) - node.startedAtMs - pausedDurationMs);
       const durationText = durationMs >= 0 ? ` (${formatDurationMs(durationMs)})` : "";
       const hasDetails = node.details.length > 0;
-      const defaultExpanded = node.status === "running" || node.status === "waiting";
-      const isExpanded = hasDetails ? (expandedNodeIds.has(node.id) || defaultExpanded) : false;
+      const isExpanded = hasDetails ? expandedNodeIds.has(node.id) : false;
 
       lines.push({
         id: node.id,
@@ -395,18 +402,7 @@ export function App(props: AppProps): React.ReactElement {
       return latestNodeId;
     });
 
-    setExpandedDagNodeIds((prev) => {
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (weaveNodeIds.includes(id)) {
-          next.add(id);
-        }
-      }
-
-      next.add(latestNodeId);
-
-      return next;
-    });
+    setExpandedDagNodeIds(new Set<string>([latestNodeId]));
   }, [uiState.weaveDagNodes, weaveNodeIds]);
 
   useInput((value, key) => {
@@ -593,7 +589,19 @@ export function App(props: AppProps): React.ReactElement {
     transcriptLines.splice(0, transcriptLines.length - TRANSCRIPT_MAX_LINES);
   }
 
-  const visibleTranscriptLines = weaveActiveTurn ? [] : transcriptLines.slice(-TRANSCRIPT_MAX_LINES);
+  const latestUserQuestion = useMemo(() => {
+    for (let i = uiState.chatLogs.length - 1; i >= 0; i -= 1) {
+      const log = uiState.chatLogs[i];
+      if (log.role === "user" && log.text.trim()) {
+        return log.text;
+      }
+    }
+    return "";
+  }, [uiState.chatLogs]);
+
+  const visibleTranscriptLines = weaveActiveTurn
+    ? transcriptLines.filter((line) => line.role === "user").slice(-1)
+    : transcriptLines.slice(-TRANSCRIPT_MAX_LINES);
   const weaveTreeLines = buildWeaveTreeLines(uiState.weaveDagNodes, expandedDagNodeIds);
 
   const statusText =
@@ -610,7 +618,7 @@ export function App(props: AppProps): React.ReactElement {
   return (
     <Box flexDirection="column" padding={1}>
       <Box flexDirection="column">
-        <Text color={THEME.primaryStrong}>openclaw tui · session {props.sessionId}</Text>
+        <Text color={THEME.primaryStrong}>Weave · session {props.sessionId}</Text>
         <Text color={THEME.muted}>
           {systemNote} | {statusText}
           {uiState.currentTool ? ` | tool: ${uiState.currentTool.toolName} ...` : ""}
@@ -625,10 +633,16 @@ export function App(props: AppProps): React.ReactElement {
         {weaveTreeLines.length > 0 ? (
           <Box borderStyle="round" borderColor={THEME.border} paddingX={1} flexDirection="column" marginBottom={1}>
             <Text color={THEME.primaryStrong}>⎈ WEAVE DAG</Text>
+            {latestUserQuestion ? (
+              <Box marginBottom={1}>
+                <Text color={THEME.muted}>问题: {latestUserQuestion}</Text>
+              </Box>
+            ) : null}
             {weaveTreeLines.map((line) => {
               const selected = line.id === selectedDagNodeId;
               const foldPrefix = line.hasDetails ? (line.isExpanded ? "[-] " : "[+] ") : "";
-              const nodeText = `${line.branchPrefix}${foldPrefix}${statusIcon(line.status)} Node ${line.id}: ${line.label}${line.durationText}`;
+              const nodeKind = line.id.includes(".") ? "工具" : "决策";
+              const nodeText = `${line.branchPrefix}${foldPrefix}${statusIcon(line.status)} [${nodeKind}] ${line.id} ${line.label}${line.durationText}`;
               const prefix = selected ? "▸ " : "  ";
 
               return (
@@ -648,7 +662,7 @@ export function App(props: AppProps): React.ReactElement {
                                 : THEME.danger
                     }
                   >
-                        {prefix}{summarizeLine(nodeText, transcriptTextMax)}
+                    {prefix}{nodeText}
                   </Text>
 
                   {line.hasDetails && line.isExpanded ? (

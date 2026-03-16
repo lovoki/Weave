@@ -6,6 +6,8 @@ import type {
   AgentThoughtEvent,
   AgentUiEventGateway,
   AgentUiStatus,
+  ApprovalPendingEvent,
+  ApprovalResolvedEvent,
   ToolEndEvent,
   ToolStartEvent,
   WeaveDagDetailEvent,
@@ -37,6 +39,8 @@ export interface WeaveDagNodeItem {
   startedAtMs: number;
   endedAtMs?: number;
   updatedAtMs: number;
+  pausedAtMs?: number;
+  pausedDurationMs: number;
   details: string[];
 }
 
@@ -200,12 +204,17 @@ export function useAgentState(gateway: AgentUiEventGateway): AgentUiState {
               startedAtMs: now,
               endedAtMs: event.status === "success" || event.status === "fail" ? now : undefined,
               updatedAtMs: now,
+              pausedDurationMs: 0,
               details: []
             }
           ];
         }
 
         const current = prev[index];
+        const extraPausedMs =
+          (event.status === "success" || event.status === "fail") && current.pausedAtMs
+            ? Math.max(0, now - current.pausedAtMs)
+            : 0;
         const next = [...prev];
         next[index] = {
           ...current,
@@ -217,7 +226,9 @@ export function useAgentState(gateway: AgentUiEventGateway): AgentUiState {
             event.status === "success" || event.status === "fail"
               ? current.endedAtMs ?? now
               : undefined,
-          updatedAtMs: now
+          updatedAtMs: now,
+          pausedAtMs: event.status === "success" || event.status === "fail" ? undefined : current.pausedAtMs,
+          pausedDurationMs: (current.pausedDurationMs ?? 0) + extraPausedMs
         };
         return next;
       });
@@ -246,6 +257,68 @@ export function useAgentState(gateway: AgentUiEventGateway): AgentUiState {
       });
     };
 
+    const onApprovalPending = (_event: ApprovalPendingEvent): void => {
+      const now = Date.now();
+      setWeaveDagNodes((prev) => {
+        if (prev.length === 0) {
+          return prev;
+        }
+
+        const target = [...prev]
+          .filter((node) => node.status === "running" || node.status === "waiting")
+          .sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0];
+
+        if (!target) {
+          return prev;
+        }
+
+        const index = prev.findIndex((node) => node.id === target.id);
+        if (index < 0 || prev[index].pausedAtMs) {
+          return prev;
+        }
+
+        const next = [...prev];
+        next[index] = {
+          ...next[index],
+          pausedAtMs: now,
+          updatedAtMs: now
+        };
+        return next;
+      });
+    };
+
+    const onApprovalResolved = (_event: ApprovalResolvedEvent): void => {
+      const now = Date.now();
+      setWeaveDagNodes((prev) => {
+        if (prev.length === 0) {
+          return prev;
+        }
+
+        const target = [...prev]
+          .filter((node) => node.status === "running" || node.status === "waiting")
+          .sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0];
+
+        if (!target) {
+          return prev;
+        }
+
+        const index = prev.findIndex((node) => node.id === target.id);
+        if (index < 0 || !prev[index].pausedAtMs) {
+          return prev;
+        }
+
+        const pausedMs = Math.max(0, now - (prev[index].pausedAtMs as number));
+        const next = [...prev];
+        next[index] = {
+          ...next[index],
+          pausedAtMs: undefined,
+          pausedDurationMs: (next[index].pausedDurationMs ?? 0) + pausedMs,
+          updatedAtMs: now
+        };
+        return next;
+      });
+    };
+
     gateway.on("agent:start", onAgentStart);
     gateway.on("agent:thought", onAgentThought);
     gateway.on("tool:start", onToolStart);
@@ -254,6 +327,8 @@ export function useAgentState(gateway: AgentUiEventGateway): AgentUiState {
     gateway.on("agent:error", onAgentError);
     gateway.on("weave:dag", onWeaveDag);
     gateway.on("weave:dag-detail", onWeaveDagDetail);
+    gateway.on("approval:pending", onApprovalPending);
+    gateway.on("approval:resolved", onApprovalResolved);
 
     return () => {
       gateway.off("agent:start", onAgentStart);
@@ -264,6 +339,8 @@ export function useAgentState(gateway: AgentUiEventGateway): AgentUiState {
       gateway.off("agent:error", onAgentError);
       gateway.off("weave:dag", onWeaveDag);
       gateway.off("weave:dag-detail", onWeaveDagDetail);
+      gateway.off("approval:pending", onApprovalPending);
+      gateway.off("approval:resolved", onApprovalResolved);
     };
   }, [gateway]);
 
