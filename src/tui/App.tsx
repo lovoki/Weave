@@ -97,6 +97,10 @@ function charDisplayWidth(char: string): number {
   return isWide ? 2 : 1;
 }
 
+function stringDisplayWidth(text: string): number {
+  return Array.from(text).reduce((sum, char) => sum + charDisplayWidth(char), 0);
+}
+
 function renderInputWithCursor(value: string, cursor: number, maxLength: number): string {
   const safeCursor = clamp(cursor, 0, value.length);
   const chars = Array.from(value);
@@ -152,6 +156,20 @@ function renderInputWithCursor(value: string, cursor: number, maxLength: number)
   return buildDisplay(left, rightExclusive);
 }
 
+/**
+ * 输入显示策略：
+ * 1. 有输入时始终渲染“可见光标”窗口。
+ * 2. 无输入时显示占位文案并做尾部裁剪。
+ * 3. 返回结果保证在 maxLength 内，避免触发行换行抖动。
+ */
+function buildInputDisplayText(input: string, cursor: number, maxLength: number, idlePlaceholder: string): string {
+  if (input) {
+    return renderInputWithCursor(input, cursor, maxLength);
+  }
+
+  return ensureVisibleCursor(fitInputPreview(idlePlaceholder, maxLength));
+}
+
 function fitInputPreview(text: string, maxLength: number): string {
   if (!text) {
     return text;
@@ -194,7 +212,7 @@ function clamp(n: number, min: number, max: number): number {
 
 function estimateDisplayWidth(text: string): number {
   // 终端宽度按“显示列”计数；使用统一字符宽度函数，避免估算口径不一致。
-  return Array.from(text).reduce((sum, char) => sum + charDisplayWidth(char), 0);
+  return stringDisplayWidth(text);
 }
 
 function areSetsEqual(a: Set<string>, b: Set<string>): boolean {
@@ -1074,7 +1092,11 @@ export function App(props: AppProps): React.ReactElement {
   // single + paddingX(1+1) + border(1+1) = 4 列开销。
   const inputInnerWidth = Math.max(12, contentWidth - 4);
   const inputPrefixWidth = estimateDisplayWidth(inputPrefix);
-  const inputTextMax = Math.max(8, inputInnerWidth - inputPrefixWidth);
+  // 保留 1 列安全余量，避免终端在边界列做不一致换行导致输入框上下抖动。
+  const inputSafeMargin = 1;
+  const inputTextMax = Math.max(8, inputInnerWidth - inputPrefixWidth - inputSafeMargin);
+  const inputIdlePlaceholder = busy ? (pendingApproval ? "(等待 Step Gate 决策...)" : "(处理中，稍候...)") : "";
+  const inputDisplayText = buildInputDisplayText(input, inputCursor, inputTextMax, inputIdlePlaceholder);
 
   return (
     <Box flexDirection="column" padding={1} width={rootWidth}>
@@ -1175,16 +1197,7 @@ export function App(props: AppProps): React.ReactElement {
 
       <Box marginTop={0} borderStyle="single" borderColor={THEME.primary} paddingX={1} width={contentWidth}>
         <Text color={THEME.primary}>{inputPrefix}</Text>
-        <Text color={THEME.text}>
-          {input
-            ? renderInputWithCursor(input, inputCursor, inputTextMax)
-            : ensureVisibleCursor(
-                fitInputPreview(
-                  busy ? (pendingApproval ? "(等待 Step Gate 决策...)" : "(处理中，稍候...)") : "",
-                  inputTextMax
-                )
-              )}
-        </Text>
+        <Text color={THEME.text}>{inputDisplayText}</Text>
       </Box>
     </Box>
   );
