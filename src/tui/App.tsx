@@ -638,6 +638,13 @@ export function App(props: AppProps): React.ReactElement {
     [uiState.weaveDagNodes]
   );
   const runActive = busy || uiState.status === "thinking" || uiState.status === "using_tool";
+  const activeDagNodeId = useMemo(() => {
+    const current = [...uiState.weaveDagNodes]
+      .filter((node) => node.status === "running" || node.status === "waiting")
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0];
+    return current?.id ?? "";
+  }, [uiState.weaveDagNodes]);
+  const previousActiveDagNodeIdRef = useRef("");
 
   useEffect(() => {
     if (visibleDagNodeIds.length === 0) {
@@ -679,6 +686,47 @@ export function App(props: AppProps): React.ReactElement {
       return next;
     });
   }, [visibleDagNodeIds]);
+
+  useEffect(() => {
+    if (!weaveActiveTurn) {
+      previousActiveDagNodeIdRef.current = "";
+      return;
+    }
+
+    if (activeDagNodeId) {
+      setSelectedDagNodeId((prev) => (prev === activeDagNodeId ? prev : activeDagNodeId));
+      setExpandedDagNodeIds((prev) => {
+        const next = new Set(prev);
+        const previousActive = previousActiveDagNodeIdRef.current;
+        if (previousActive && previousActive !== activeDagNodeId) {
+          next.delete(previousActive);
+        }
+
+        next.add(activeDagNodeId);
+        if (areSetsEqual(prev, next)) {
+          return prev;
+        }
+
+        return next;
+      });
+
+      previousActiveDagNodeIdRef.current = activeDagNodeId;
+      return;
+    }
+
+    if (!runActive && visibleDagNodeIds.length > 0) {
+      const lastNodeId = visibleDagNodeIds[visibleDagNodeIds.length - 1];
+      setSelectedDagNodeId((prev) => (prev === lastNodeId ? prev : lastNodeId));
+      setExpandedDagNodeIds((prev) => {
+        const next = new Set<string>([lastNodeId]);
+        if (areSetsEqual(prev, next)) {
+          return prev;
+        }
+        return next;
+      });
+      previousActiveDagNodeIdRef.current = "";
+    }
+  }, [weaveActiveTurn, activeDagNodeId, runActive, visibleDagNodeIds]);
 
   useEffect(() => {
     setInputCursor((prev) => clamp(prev, 0, input.length));

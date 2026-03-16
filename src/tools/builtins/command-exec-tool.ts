@@ -117,14 +117,21 @@ function decodeCommandOutput(raw: Buffer | string | undefined, isWindows: boolea
     return utf8;
   }
 
-  // Windows 命令输出在某些环境仍可能落在 GBK，尝试用 gbk 解码兜底。
-  try {
-    const decoder = new TextDecoder("gbk");
-    const gbk = decoder.decode(raw);
-    return looksLikeMojibake(gbk) ? utf8 : gbk;
-  } catch {
-    return utf8;
+  // Windows 命令输出在某些环境仍可能落在 GB 系编码，按 gb18030/gbk 依次兜底。
+  const fallbacks = ["gb18030", "gbk", "utf-8"] as const;
+  for (const encoding of fallbacks) {
+    try {
+      const decoder = new TextDecoder(encoding);
+      const decoded = decoder.decode(raw);
+      if (!looksLikeMojibake(decoded)) {
+        return decoded;
+      }
+    } catch {
+      // 忽略当前编码失败，继续尝试下一个编码。
+    }
   }
+
+  return utf8;
 }
 
 function looksLikeMojibake(text: string): boolean {

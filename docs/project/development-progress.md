@@ -9,6 +9,39 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 042 - Weave 输出质量修复：乱码治理 + 节点折叠策略统一
+
+#### 范围
+修复工具输出乱码与节点详情截断问题，并将 WEAVE 模式节点执行过程的展开/折叠行为统一为通用规则。
+
+#### 改动
+- 命令输出乱码治理：
+  - `src/tools/builtins/command-exec-tool.ts`
+  - Windows 下输出解码从单一 `gbk` 兜底改为 `gb18030 -> gbk` 逐级尝试，降低 mojibake 概率。
+- 节点详情截断修复：
+  - `src/weave/weave-plugin.ts`
+  - 取消 `summarizeText` 的 120 字符截断，保留完整节点描述输出。
+- WEAVE 节点交互策略统一：
+  - `src/tui/App.tsx`
+  - 执行中：自动选中并展开当前运行/等待节点。
+  - 节点切换：自动折叠前一个活动节点。
+  - 执行完成：自动选中最后一个节点并仅展开该节点（通常为最终结果节点）。
+
+#### 影响文件
+- src/tools/builtins/command-exec-tool.ts
+- src/weave/weave-plugin.ts
+- src/tui/App.tsx
+
+#### 验证
+- 构建通过：`corepack pnpm build`。
+- 全量回归通过：`corepack pnpm verify:p0`。
+
+#### 待解决问题
+- 某些终端环境若底层编码配置异常，仍可能出现个别命令输出编码不一致问题。
+
+#### 下一步
+- 如需更强稳定性，可增加“命令执行壳层环境探测 + 编码健康检查”预检。
+
 ### 2026-03-16 - Entry 041 - 输入行尾抖动修复（显示列宽对齐）
 
 #### 范围

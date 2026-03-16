@@ -250,11 +250,7 @@ export class WeavePlugin implements AgentLoopPlugin {
     }
 
     const normalized = text.replace(/\s+/g, " ").trim();
-    if (normalized.length <= 120) {
-      return normalized;
-    }
-
-    return `${normalized.slice(0, 120)}...`;
+    return normalized;
   }
 
   private formatToolIntent(toolName: string, args?: unknown): ToolIntentSemantic {
