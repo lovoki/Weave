@@ -1,0 +1,619 @@
+import { EventEmitter } from "node:events";
+import type { LlmConfig } from "../types/config.js";
+import { QwenClient, type ChatHistoryMessage } from "../llm/qwen-client.js";
+import { MemoryStore } from "../memory/memory-store.js";
+import { AppLogger } from "../logging/app-logger.js";
+import { ToolRegistry } from "../tools/tool-registry.js";
+import type { ToolExecuteResult } from "../tools/tool-types.js";
+import type OpenAI from "openai";
+import type {
+  AgentLoopPlugin,
+  AgentPluginOutputs,
+  AgentPluginOutput,
+  AgentPluginRunContext
+} from "./plugins/agent-plugin.js";
+
+/**
+ * 文件作用：提供 Agent 运行时最小抽象，承接上层输入并调用 LLM 客户端生成回复。
+ */
+export type AgentRunEventType =
+  | "run.start"
+  | "llm.request"
+  | "llm.delta"
+  | "llm.completed"
+  | "node.pending_approval"
+  | "node.approval.resolved"
+  | "tool.execution.start"
+  | "tool.execution.end"
+  | "plugin.output"
+  | "run.completed"
+  | "run.error";
+
+export interface AgentRunEvent {
+  type: AgentRunEventType;
+  runId: string;
+  timestamp: string;
+  payload?: {
+    text?: string;
+    userInput?: string;
+    errorMessage?: string;
+    finalText?: string;
+    sessionId?: string;
+    turnIndex?: number;
+    toolName?: string;
+    toolOk?: boolean;
+    toolCallId?: string;
+    toolArgsText?: string;
+    toolArgsJsonText?: string;
+    toolResultText?: string;
+    toolStatus?: "success" | "fail";
+    approvalAction?: "approve" | "edit" | "skip" | "abort";
+    pluginName?: string;
+    outputType?: string;
+    outputText?: string;
+  };
+}
+
+export interface ToolApprovalRequest {
+  runId: string;
+  step: number;
+  toolName: string;
+  toolCallId: string;
+  args: unknown;
+  argsText: string;
+}
+
+export interface ToolApprovalDecision {
+  action: "approve" | "edit" | "skip" | "abort";
+  editedArgs?: unknown;
+}
+
+interface StepGateOptions {
+  enabled: boolean;
+  approveToolCall?: (request: ToolApprovalRequest) => Promise<ToolApprovalDecision>;
+}
+
+export class AgentRuntime extends EventEmitter {
+  private readonly llmClient: QwenClient;
+  private readonly memoryStore: MemoryStore;
+  private readonly toolRegistry: ToolRegistry;
+  private readonly logger = new AppLogger("agent-runtime");
+  private sessionId = "";
+  private turnIndex = 0;
+  private readonly historyMessages: ChatHistoryMessage[] = [];
+  private readonly streamChunkSize = 14;
+  private readonly streamChunkDelayMs = 8;
+
+  constructor(
+    private readonly llmConfig: LlmConfig,
+    memoryStore?: MemoryStore,
+    toolRegistry?: ToolRegistry
+  ) {
+    super();
+    // 初始化核心依赖：LLM 客户端 + 记忆存储。
+    this.llmClient = new QwenClient(this.llmConfig);
+    this.memoryStore = memoryStore ?? new MemoryStore();
+    this.toolRegistry = toolRegistry ?? new ToolRegistry();
+    this.memoryStore.ensureMemoryFiles();
+    this.logger.info("runtime.init", "AgentRuntime 初始化完成", {
+      provider: this.llmConfig.provider,
+      model: this.llmConfig.model
+    });
+  }
+
+  startSession(sessionId: string): void {
+    // 每次新会话都重置历史，保证上下文边界清晰。
+    this.sessionId = sessionId;
+    this.turnIndex = 0;
+    this.historyMessages.length = 0;
+    this.logger.info("session.start", "会话已初始化", { sessionId });
+  }
+
+  async runOnce(userInput: string): Promise<string> {
+    // 当前为单轮调用：后续可在这里扩展为多轮循环、工具调用和记忆注入。
+    this.logger.info("run.once.start", "开始执行非流式调用", {
+      userInputLength: userInput.length
+    });
+
+    // 先将多源记忆合成为 system prompt，再发给模型。
+    const composedSystemPrompt = this.memoryStore.buildSystemPrompt(this.llmConfig.systemPrompt);
+    const finalText = await this.llmClient.chat({
+      userMessage: userInput,
+      systemPrompt: composedSystemPrompt,
+      historyMessages: this.historyMessages
+    });
+
+    // 非流式也要沉淀多轮历史，确保后续提问可引用上下文。
+    this.historyMessages.push({ role: "user", content: userInput });
+    this.historyMessages.push({ role: "assistant", content: finalText });
+
+    this.logger.info("run.once.completed", "非流式调用完成", {
+      responseLength: finalText.length
+    });
+    return finalText;
+  }
+
+  async runOnceStream(
+    userInput: string,
+    options?: {
+      plugins?: AgentLoopPlugin[];
+      stepMode?: boolean;
+      approveToolCall?: (request: ToolApprovalRequest) => Promise<ToolApprovalDecision>;
+    }
+  ): Promise<string> {
+    // 使用 runId 串联一轮执行中全部事件，便于后续观测、回放和排障。
+    const runId = this.createRunId();
+    this.turnIndex += 1;
+
+    this.logger.info("run.stream.start", "开始执行流式调用", {
+      runId,
+      sessionId: this.sessionId,
+      turnIndex: this.turnIndex,
+      userInputLength: userInput.length
+    });
+
+    // 发布运行开始事件，通知上层进入处理态。
+    this.emitRunEvent({
+      type: "run.start",
+      runId,
+      timestamp: new Date().toISOString(),
+      payload: { userInput, sessionId: this.sessionId, turnIndex: this.turnIndex }
+    });
+
+    // 发布 LLM 请求事件，标记模型调用阶段开始。
+    this.emitRunEvent({
+      type: "llm.request",
+      runId,
+      timestamp: new Date().toISOString(),
+      payload: { userInput, sessionId: this.sessionId, turnIndex: this.turnIndex }
+    });
+
+    try {
+      const plugins = options?.plugins ?? [];
+      const basePluginContext: AgentPluginRunContext = {
+        runId,
+        sessionId: this.sessionId,
+        turnIndex: this.turnIndex,
+        userInput
+      };
+
+      for (const plugin of plugins) {
+        const output = await plugin.onRunStart?.(basePluginContext);
+        this.emitPluginOutput(runId, output);
+      }
+
+      // 将基础提示词与文件化记忆拼装后注入模型。
+      const composedSystemPrompt = this.memoryStore.buildSystemPrompt(this.llmConfig.systemPrompt);
+
+      // 使用 Agent loop，支持模型按需触发工具调用并观察工具结果后继续推理。
+      const finalText = await this.runAgentLoop(
+        runId,
+        userInput,
+        composedSystemPrompt,
+        plugins,
+        basePluginContext,
+        {
+          enabled: options?.stepMode === true,
+          approveToolCall: options?.approveToolCall
+        }
+      );
+
+      // 流式完成后写入多轮历史，为下一轮提供上下文。
+      this.historyMessages.push({ role: "user", content: userInput });
+      this.historyMessages.push({ role: "assistant", content: finalText });
+
+      this.emitRunEvent({
+        type: "llm.completed",
+        runId,
+        timestamp: new Date().toISOString(),
+        payload: { finalText, sessionId: this.sessionId, turnIndex: this.turnIndex }
+      });
+
+      this.emitRunEvent({
+        type: "run.completed",
+        runId,
+        timestamp: new Date().toISOString(),
+        payload: { finalText, sessionId: this.sessionId, turnIndex: this.turnIndex }
+      });
+
+      this.logger.info("run.stream.completed", "流式调用完成", {
+        runId,
+        sessionId: this.sessionId,
+        turnIndex: this.turnIndex,
+        responseLength: finalText.length
+      });
+
+      // 运行结束后触发插件输出（如 Weave DAG 渲染结果）。
+      for (const plugin of plugins) {
+        const output = await plugin.onRunCompleted?.({
+          ...basePluginContext,
+          finalText
+        });
+        this.emitPluginOutput(runId, output);
+      }
+
+      return finalText;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const plugins = options?.plugins ?? [];
+      const basePluginContext: AgentPluginRunContext = {
+        runId,
+        sessionId: this.sessionId,
+        turnIndex: this.turnIndex,
+        userInput
+      };
+
+      for (const plugin of plugins) {
+        const output = await plugin.onRunError?.({
+          ...basePluginContext,
+          errorMessage
+        });
+        this.emitPluginOutput(runId, output);
+      }
+
+      this.logger.error("run.stream.error", "流式调用失败", {
+        runId,
+        sessionId: this.sessionId,
+        turnIndex: this.turnIndex,
+        errorMessage
+      });
+      this.emitRunEvent({
+        type: "run.error",
+        runId,
+        timestamp: new Date().toISOString(),
+        payload: { errorMessage, sessionId: this.sessionId, turnIndex: this.turnIndex }
+      });
+      throw error;
+    }
+  }
+
+  private async runAgentLoop(
+    runId: string,
+    userInput: string,
+    systemPrompt: string,
+    plugins: AgentLoopPlugin[],
+    basePluginContext: AgentPluginRunContext,
+    stepGate: StepGateOptions
+  ): Promise<string> {
+    // 每轮最多执行 maxSteps 次，防止模型和工具之间出现无限循环。
+    const maxSteps = 6;
+    const modelTools = this.toolRegistry.listModelTools();
+
+    // 构建本轮工作消息：历史用户/助手对话 + 本轮用户输入。
+    const workingMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = this.historyMessages.map(
+      (message) => ({
+        role: message.role,
+        content: message.content
+      })
+    );
+    workingMessages.push({ role: "user", content: userInput });
+
+    for (let step = 1; step <= maxSteps; step += 1) {
+      this.logger.info("run.loop.step", "Agent loop 执行中", {
+        runId,
+        step,
+        sessionId: this.sessionId,
+        turnIndex: this.turnIndex,
+        modelToolCount: modelTools.length
+      });
+
+      // 在 LLM 输入前执行插件钩子（Weave 可在此改写提示词）。
+      let effectiveSystemPrompt = systemPrompt;
+      for (const plugin of plugins) {
+        const changed = await plugin.beforeLlmRequest?.({
+          ...basePluginContext,
+          step,
+          systemPrompt: effectiveSystemPrompt,
+          messages: workingMessages
+        });
+
+        if (changed?.systemPrompt) {
+          effectiveSystemPrompt = changed.systemPrompt;
+        }
+
+        this.emitPluginOutput(runId, changed?.output);
+      }
+
+      // 调用模型获取回复，包含文本和工具调用指令。
+      const assistantMessage = await this.llmClient.chatWithTools({
+        systemPrompt: effectiveSystemPrompt,
+        messages: workingMessages,
+        tools: modelTools
+      });
+
+      // 在 LLM 输出后执行插件钩子（Weave 可记录 DAG 节点）。
+      for (const plugin of plugins) {
+        const output = await plugin.afterLlmResponse?.({
+          ...basePluginContext,
+          step,
+          assistantMessage
+        });
+        this.emitPluginOutput(runId, output);
+      }
+
+      const toolCalls = assistantMessage.tool_calls ?? [];
+      // 模型回复中不包含工具调用时，认为本轮对话完成，输出最终文本。
+      if (toolCalls.length === 0) {
+        const finalText = assistantMessage.content ?? "";
+        // 无工具调用时，按分片发送最终文本，恢复终端可见的流式体验。
+        await this.emitTextAsStream(runId, finalText);
+        return finalText;
+      }
+
+      // 将 assistant 的工具调用消息写入上下文，供后续 tool 消息正确关联。
+      workingMessages.push({
+        role: "assistant",
+        content: assistantMessage.content ?? "",
+        tool_calls: toolCalls
+      });
+
+      // 逐个执行工具；工具结果回填给模型继续推理。
+      for (const toolCall of toolCalls) {
+        const toolName = toolCall.function.name;
+
+        // 工具阶段也以流式文本给出进度提示，提升交互可读性。
+        await this.emitTextAsStream(runId, `\n[工具执行中] ${toolName}\n`);
+
+        let parsedArgs: unknown = {};
+        try {
+          parsedArgs = JSON.parse(toolCall.function.arguments || "{}");
+        } catch {
+          parsedArgs = {};
+        }
+
+        let effectiveArgs = parsedArgs;
+        let skipByApproval = false;
+        if (stepGate.enabled && stepGate.approveToolCall) {
+          this.emitRunEvent({
+            type: "node.pending_approval",
+            runId,
+            timestamp: new Date().toISOString(),
+            payload: {
+              sessionId: this.sessionId,
+              turnIndex: this.turnIndex,
+              toolName,
+              toolCallId: toolCall.id,
+              toolArgsText: this.summarizeForEvent(parsedArgs),
+              toolArgsJsonText: this.safeJsonStringify(parsedArgs)
+            }
+          });
+
+          const decision = await stepGate.approveToolCall({
+            runId,
+            step,
+            toolName,
+            toolCallId: toolCall.id,
+            args: parsedArgs,
+            argsText: this.safeJsonStringify(parsedArgs)
+          });
+
+          if (decision.action === "abort") {
+            this.emitRunEvent({
+              type: "node.approval.resolved",
+              runId,
+              timestamp: new Date().toISOString(),
+              payload: {
+                sessionId: this.sessionId,
+                turnIndex: this.turnIndex,
+                toolName,
+                toolCallId: toolCall.id,
+                approvalAction: "abort"
+              }
+            });
+            throw new Error("用户终止了当前回合执行");
+          }
+
+          if (decision.action === "edit" && decision.editedArgs !== undefined) {
+            effectiveArgs = decision.editedArgs;
+          }
+
+          if (decision.action === "skip") {
+            skipByApproval = true;
+          }
+
+          this.emitRunEvent({
+            type: "node.approval.resolved",
+            runId,
+            timestamp: new Date().toISOString(),
+            payload: {
+              sessionId: this.sessionId,
+              turnIndex: this.turnIndex,
+              toolName,
+              toolCallId: toolCall.id,
+              approvalAction: decision.action,
+              toolArgsText: this.summarizeForEvent(effectiveArgs),
+              toolArgsJsonText: this.safeJsonStringify(effectiveArgs)
+            }
+          });
+        }
+
+        this.emitRunEvent({
+          type: "tool.execution.start",
+          runId,
+          timestamp: new Date().toISOString(),
+          payload: {
+            sessionId: this.sessionId,
+            turnIndex: this.turnIndex,
+            toolName,
+            toolCallId: toolCall.id,
+            toolArgsText: this.summarizeForEvent(effectiveArgs),
+            toolArgsJsonText: this.safeJsonStringify(effectiveArgs)
+          }
+        });
+
+        for (const plugin of plugins) {
+          const output = await plugin.beforeToolExecution?.({
+            ...basePluginContext,
+            step,
+            toolName,
+            toolCallId: toolCall.id,
+            args: effectiveArgs
+          });
+          this.emitPluginOutput(runId, output);
+        }
+
+        const result: ToolExecuteResult =
+          skipByApproval
+            ? {
+                ok: false,
+                content: "[SKIPPED by approval gate]",
+                metadata: { skippedByUser: true }
+              }
+            : await this.toolRegistry.execute(toolName, effectiveArgs, {
+                sessionId: this.sessionId,
+                runId,
+                workspaceRoot: process.cwd()
+              });
+
+        await this.emitTextAsStream(runId, `[工具执行完成] ${toolName}\n`);
+
+        for (const plugin of plugins) {
+          const output = await plugin.afterToolExecution?.({
+            ...basePluginContext,
+            step,
+            toolName,
+            toolCallId: toolCall.id,
+            args: effectiveArgs,
+            result
+          });
+          this.emitPluginOutput(runId, output);
+        }
+
+        this.emitRunEvent({
+          type: "tool.execution.end",
+          runId,
+          timestamp: new Date().toISOString(),
+          payload: {
+            sessionId: this.sessionId,
+            turnIndex: this.turnIndex,
+            toolName,
+            toolCallId: toolCall.id,
+            toolOk: result.ok,
+            toolStatus: result.ok ? "success" : "fail",
+            toolResultText: this.summarizeForEvent(result.content)
+          }
+        });
+
+        workingMessages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify({
+            ok: result.ok,
+            content: result.content,
+            metadata: result.metadata
+          })
+        });
+      }
+
+      // 工具执行与下一轮模型请求之间增加轻量状态流，减少“卡住感”。
+      await this.emitTextAsStream(runId, "[正在根据工具结果继续推理...]\n");
+    }
+
+    const fallback = "已达到最大工具调用步数，请缩小问题范围后重试。";
+    await this.emitTextAsStream(runId, fallback);
+    return fallback;
+  }
+
+  private async emitTextAsStream(runId: string, text: string): Promise<void> {
+    // 统一分片发射器：供“最终回答输出”与“工具过程提示”复用，避免多处重复实现。
+    if (!text) {
+      return;
+    }
+
+    const chunks = this.splitText(text, this.streamChunkSize);
+    for (const chunk of chunks) {
+      this.emitRunEvent({
+        type: "llm.delta",
+        runId,
+        timestamp: new Date().toISOString(),
+        payload: { text: chunk }
+      });
+
+      if (this.streamChunkDelayMs > 0) {
+        await this.sleep(this.streamChunkDelayMs);
+      }
+    }
+  }
+
+  private splitText(text: string, chunkSize: number): string[] {
+    const result: string[] = [];
+    for (let i = 0; i < text.length; i += chunkSize) {
+      result.push(text.slice(i, i + chunkSize));
+    }
+    return result;
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private summarizeForEvent(value: unknown, maxLength = 120): string {
+    if (value === null || value === undefined) {
+      return "";
+    }
+
+    let text = "";
+    if (typeof value === "string") {
+      text = value;
+    } else {
+      try {
+        text = JSON.stringify(value);
+      } catch {
+        text = String(value);
+      }
+    }
+
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, maxLength)}...`;
+  }
+
+  private safeJsonStringify(value: unknown): string {
+    try {
+      return JSON.stringify(value ?? {});
+    } catch {
+      return "{}";
+    }
+  }
+
+
+  private emitRunEvent(event: AgentRunEvent): void {
+    // 统一在事件发布点做日志打标，保证链路可追踪。
+    // delta 事件数量较大，避免刷屏，仅记录关键阶段事件。
+    if (event.type !== "llm.delta") {
+      this.logger.info("event.publish", "发布运行事件", {
+        runId: event.runId,
+        eventType: event.type
+      });
+    }
+    this.emit("event", event);
+  }
+
+  private emitPluginOutput(runId: string, output: AgentPluginOutputs): void {
+    if (!output) {
+      return;
+    }
+
+    const outputs = Array.isArray(output) ? output : [output];
+    for (const item of outputs) {
+      this.emitRunEvent({
+        type: "plugin.output",
+        runId,
+        timestamp: new Date().toISOString(),
+        payload: {
+          pluginName: item.pluginName,
+          outputType: item.outputType,
+          outputText: item.outputText
+        }
+      });
+    }
+  }
+
+  private createRunId(): string {
+    const randomPart = Math.random().toString(36).slice(2, 10);
+    return `run_${Date.now()}_${randomPart}`;
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "dagent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node --enable-source-maps dist/index.js",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ink": "^6.8.0",
+    "ink-spinner": "^5.0.0",
+    "openai": "^4.86.1",
+    "react": "^19.2.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.2.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
