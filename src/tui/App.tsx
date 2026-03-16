@@ -479,14 +479,14 @@ export function App(props: AppProps): React.ReactElement {
     [uiState.weaveDagNodes, expandedDagNodeIds]
   );
   const weaveNodeIds = useMemo(
-    () => weaveTreeLines.map((line) => line.id).sort(compareNodeId),
-    [weaveTreeLines]
+    () => uiState.weaveDagNodes.map((node) => node.id).sort(compareNodeId),
+    [uiState.weaveDagNodes]
   );
 
   useEffect(() => {
     if (weaveNodeIds.length === 0) {
-      setSelectedDagNodeId("");
-      setExpandedDagNodeIds(new Set());
+      setSelectedDagNodeId((prev) => (prev ? "" : prev));
+      setExpandedDagNodeIds((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
     const latestNodeId = weaveNodeIds[weaveNodeIds.length - 1];
@@ -499,8 +499,14 @@ export function App(props: AppProps): React.ReactElement {
       return latestNodeId;
     });
 
-    setExpandedDagNodeIds(new Set<string>([latestNodeId]));
-  }, [uiState.weaveDagNodes, weaveNodeIds]);
+    setExpandedDagNodeIds((prev) => {
+      if (prev.size === 1 && prev.has(latestNodeId)) {
+        return prev;
+      }
+
+      return new Set<string>([latestNodeId]);
+    });
+  }, [weaveNodeIds]);
 
   useInput((value, key) => {
     if (key.ctrl && value.toLowerCase() === "c") {
