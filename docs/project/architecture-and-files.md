@@ -134,6 +134,7 @@ dagent/
   - 重试过程透明化：在工具节点下输出“尝试子节点 + 修复子节点”，完整呈现失败、局部修复、自动重试链路。
   - 新增重试生命周期运行事件：`tool.retry.start` / `tool.retry.end`，用于诊断与外部观测。
   - 可读性策略：主工具节点仅输出状态与重试汇总，详细失败原因/修复结果下沉到子节点，降低重复噪声。
+  - 局部修复节点按 LLM 决策语义输出：展示 `llm_output` 与 `repaired_args`，不再重复回放上一次错误文本。
   - 在流式调用过程中发布 `run.start`、`llm.request`、`llm.delta`、`llm.completed`、`run.completed`、`run.error` 事件。
   - 新增工具事件：`tool.execution.start`、`tool.execution.end`。
   - 新增 Step Gate 事件：`node.pending_approval`、`node.approval.resolved`。

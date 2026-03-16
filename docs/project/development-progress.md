@@ -9,6 +9,41 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 053 - 局部修复节点语义升级（LLM输出 + 修复后参数）
+
+#### 范围
+优化“局部修复参数”节点可读性：不再重复展示上一次错误原因，改为明确展示 LLM 修复输出与修复后参数。
+
+#### 改动
+- 修复结果结构化：
+  - `src/agent/run-agent.ts`
+  - `repairToolArgsByIntent` 返回结构升级为 `{ repairedArgs, llmOutput }`
+  - DAG 与 legacy 两条重试路径统一消费新结构
+- 修复节点展示语义调整：
+  - `src/agent/run-agent.ts`
+  - 修复节点标题改为 `LLM局部修复参数 #n`
+  - 修复节点 detail 输出：
+    - `llm_output=...`
+    - `repaired_args=...`
+  - 移除修复节点中的 `last_error=...` 噪声
+- UI 节点类型展示优化：
+  - `src/tui/App.tsx`
+  - 对 `LLM局部修复参数` 节点按“决策”类型渲染，语义上与工具执行节点区分
+
+#### 影响文件
+- src/agent/run-agent.ts
+- src/tui/App.tsx
+
+#### 验证
+- 构建通过：`corepack pnpm build`。
+- 全量回归通过：`corepack pnpm verify:p0`。
+
+#### 待解决问题
+- `llm_output` 当前仍以摘要形式展示；若需要审计级别追踪，可增加“展开查看完整原文”开关。
+
+#### 下一步
+- 可选增强：输出参数差异（diff）而不只完整 `repaired_args`，进一步提升排障效率。
+
 ### 2026-03-16 - Entry 052 - 重试链路可读性优化（主节点汇总 + 子节点细节）
 
 #### 范围

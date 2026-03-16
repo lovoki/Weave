@@ -96,6 +96,11 @@ interface ToolRetryTicket {
   lastResult: string;
 }
 
+interface ToolRepairResult {
+  repairedArgs: Record<string, unknown> | null;
+  llmOutput: string;
+}
+
 export class AgentRuntime extends EventEmitter {
   private static readonly AGENT_EVENT_SCHEMA_VERSION = "dagent.agent.event.v1";
   private readonly llmClient: QwenClient;
@@ -911,9 +916,9 @@ export class AgentRuntime extends EventEmitter {
               previousArgs: this.stripRuntimeToolMeta(effectiveArgs),
               lastResult: this.summarizeForEvent(result.content, 300)
             };
-            const repairedArgs = await this.repairToolArgsByIntent(repairTicket, this.memoryStore.buildSystemPrompt(this.llmConfig.systemPrompt));
-            if (repairedArgs) {
-              effectiveArgs = this.attachIntentToToolArgs(repairedArgs, {
+            const repairResult = await this.repairToolArgsByIntent(repairTicket, this.memoryStore.buildSystemPrompt(this.llmConfig.systemPrompt));
+            if (repairResult.repairedArgs) {
+              effectiveArgs = this.attachIntentToToolArgs(repairResult.repairedArgs, {
                 summary: intentSummary,
                 goal: toolGoal
               });
@@ -922,12 +927,18 @@ export class AgentRuntime extends EventEmitter {
             this.emitWeaveDagNodeEvent(runId, {
               nodeId: repairNodeId,
               parentId: detailNodeId,
-              label: `局部修复参数 #${attempt}`,
+              label: `LLM局部修复参数 #${attempt}`,
               status: "success"
             });
             this.emitWeaveDagDetailEvent(runId, {
               nodeId: repairNodeId,
-              text: `${repairedArgs ? "args=updated" : "args=unchanged"} last_error=${this.summarizeForEvent(result.content, 160)}`
+              text: `llm_output=${this.summarizeForEvent(repairResult.llmOutput, 200)}`
+            });
+            this.emitWeaveDagDetailEvent(runId, {
+              nodeId: repairNodeId,
+              text: repairResult.repairedArgs
+                ? `repaired_args=${this.safeJsonStringify(this.stripRuntimeToolMeta(repairResult.repairedArgs))}`
+                : `repaired_args=${this.safeJsonStringify(this.stripRuntimeToolMeta(effectiveArgs))}`
             });
 
             this.emitRunEvent({
@@ -941,13 +952,13 @@ export class AgentRuntime extends EventEmitter {
                 toolCallId: payload.toolCallId,
                 retryAttempt: attempt,
                 retryMax: payload.maxRetries,
-                retryPrepared: repairedArgs !== null
+                retryPrepared: repairResult.repairedArgs !== null
               }
             });
 
             this.emitDagNodeDetailEvent(runId, {
               nodeId: detailNodeId,
-              text: `retries=${attempt}/${payload.maxRetries} ${repairedArgs ? "args=updated" : "args=unchanged"} reason=${this.summarizeForEvent(result.content, 80)}`
+              text: `retries=${attempt}/${payload.maxRetries} ${repairResult.repairedArgs ? "args=updated" : "args=unchanged"}`
             });
           }
         }
@@ -1264,7 +1275,7 @@ export class AgentRuntime extends EventEmitter {
               break;
             }
 
-            const repairedArgs = await this.repairToolArgsByIntent(
+            const repairResult = await this.repairToolArgsByIntent(
               {
                 toolName,
                 intentSummary: toolIntent.summary,
@@ -1273,8 +1284,8 @@ export class AgentRuntime extends EventEmitter {
               },
               systemPrompt
             );
-            if (repairedArgs) {
-              effectiveArgs = this.attachIntentToToolArgs(repairedArgs, toolIntent);
+            if (repairResult.repairedArgs) {
+              effectiveArgs = this.attachIntentToToolArgs(repairResult.repairedArgs, toolIntent);
             }
           }
         }
@@ -1459,7 +1470,7 @@ export class AgentRuntime extends EventEmitter {
     return rest;
   }
 
-  private async repairToolArgsByIntent(ticket: ToolRetryTicket, systemPrompt: string): Promise<Record<string, unknown> | null> {
+  private async repairToolArgsByIntent(ticket: ToolRetryTicket, systemPrompt: string): Promise<ToolRepairResult> {
     const repairPrompt = [
       "你是工具参数修复器。请根据失败信息修复参数，并且仅返回 JSON 对象，不要输出任何解释。",
       `toolName=${ticket.toolName}`,
@@ -1475,7 +1486,10 @@ export class AgentRuntime extends EventEmitter {
     });
 
     const parsed = this.extractJsonObject(raw);
-    return parsed;
+    return {
+      repairedArgs: parsed,
+      llmOutput: raw
+    };
   }
 
   private extractJsonObject(text: string): Record<string, unknown> | null {

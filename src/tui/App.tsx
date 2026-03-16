@@ -341,6 +341,10 @@ function semanticToolTitle(label: string, details: string[]): string {
   return label;
 }
 
+function isRepairLlmNodeLabel(label: string): boolean {
+  return label.includes("LLM局部修复参数");
+}
+
 function summarizeApprovalIntent(toolName: string, argsText: string): string {
   let args: Record<string, unknown> = {};
   try {
@@ -1133,8 +1137,12 @@ export function App(props: AppProps): React.ReactElement {
             {weaveTreeLines.map((line) => {
               const selected = line.id === selectedDagNodeId;
               const foldPrefix = line.hasDetails ? (line.isExpanded ? "[-] " : "[+] ") : "";
-              const nodeKind = line.id.includes(".") ? "工具" : "决策";
-              const semanticLabel = line.id.includes(".") ? semanticToolTitle(line.label, line.details) : line.label;
+              const nodeKind = isRepairLlmNodeLabel(line.label) ? "决策" : line.id.includes(".") ? "工具" : "决策";
+              const semanticLabel = isRepairLlmNodeLabel(line.label)
+                ? line.label
+                : line.id.includes(".")
+                  ? semanticToolTitle(line.label, line.details)
+                  : line.label;
               const nodeText = `${line.branchPrefix}${foldPrefix}${statusIcon(line.status, line.retryCurrent, line.retryMax)} [${nodeKind}] ${line.id} ${semanticLabel}${line.durationText}`;
               const prefix = selected ? "▸ " : "  ";
 
