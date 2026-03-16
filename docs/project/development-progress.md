@@ -9,6 +9,36 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 034 - 底层重构第 1 步：输入分发层解耦
+
+#### 范围
+在不改网关层与不改变现有 TUI 协议的前提下，先完成“消息分发层”解耦，统一命令拦截与问答路由。
+
+#### 改动
+- 新增输入分发模块 `src/agent/message-dispatcher.ts`：
+  - 统一处理 `/q|/quit|/exit` 退出命令
+  - 统一处理 `/weave on|off|step` 模式切换命令
+  - 统一输出问答消息分发结果（question + weave 选项）
+- TUI 会话链路改造：`App.tsx` 从“直接 parse + 分支”改为“先 dispatch 再执行”。
+- 非 TTY 批处理链路改造：`index.ts` 复用同一分发器，避免两条链路语义漂移。
+- 架构文档补充 `message-dispatcher` 文件职责说明。
+
+#### 影响文件
+- src/agent/message-dispatcher.ts
+- src/tui/App.tsx
+- src/index.ts
+- docs/project/architecture-and-files.md
+
+#### 验证
+- 构建通过：`corepack pnpm build`。
+- 行为回归通过：`node scripts/verify-step-gate.mjs`。
+
+#### 待解决问题
+- 当前仍使用 Legacy loop 执行，尚未进入 DagRunner 调度器替换阶段。
+
+#### 下一步
+进入重构第 2 步：抽象 runner 接口（legacy/dag 双 runner），先保持默认走 legacy，确保 off 模式零行为变化。
+
 ### 2026-03-16 - Entry 033 - Weave 架构补充：数据流与运行时安全治理
 
 #### 范围

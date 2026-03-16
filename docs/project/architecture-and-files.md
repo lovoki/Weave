@@ -126,6 +126,9 @@ dagent/
   - 新增插件输出事件：`plugin.output`。
   - 在 Agent-loop 预留插件钩子：`beforeLlmRequest`、`afterLlmResponse`、`beforeToolExecution`、`afterToolExecution`。
   - 对事件发布、调用开始/结束/异常进行日志打标。
+- `src/agent/message-dispatcher.ts`
+  - 输入分发层：统一对用户输入做命令拦截、模式切换与问答消息分类。
+  - 将控制命令（如 `/weave on`、`/q`）与问答执行解耦，避免 UI/入口层重复分支逻辑。
 - `src/index.ts`
   - CLI 入口，启动 Ink TUI 多轮会话（单次命令常驻）。
   - 显式初始化 `MemoryStore` 并注入 Agent Runtime。

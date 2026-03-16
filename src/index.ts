@@ -1,6 +1,7 @@
 import { render } from "ink";
 import { loadLlmConfig } from "./config/load-llm-config.js";
 import { AgentRuntime } from "./agent/run-agent.js";
+import { dispatchUserInput } from "./agent/message-dispatcher.js";
 import { MemoryStore } from "./memory/memory-store.js";
 import { AppLogger, writeConversationChainLog, type ConversationChainStep } from "./logging/app-logger.js";
 import { SessionRecorder } from "./session/session-recorder.js";
@@ -9,7 +10,7 @@ import { builtinTools } from "./tools/builtins/index.js";
 import React from "react";
 import { App } from "./tui/App.js";
 import { WeavePlugin } from "./weave/weave-plugin.js";
-import { parseTurnInput, type WeaveMode } from "./tui/weave-mode.js";
+import type { WeaveMode } from "./tui/weave-mode.js";
 
 /**
  * 文件作用：命令行入口，启动终端多轮会话。
@@ -134,20 +135,22 @@ async function runBatchSession(input: {
     const rawLine = lines[cursor];
     cursor += 1;
 
-    if (rawLine === "/q" || rawLine === "/quit" || rawLine === "/exit") {
-      reason = `command:${rawLine}`;
+    const dispatched = dispatchUserInput(rawLine, weaveMode);
+    if (dispatched.kind === "quit") {
+      reason = `command:${dispatched.command}`;
       break;
     }
 
-    const parsed = parseTurnInput(rawLine, weaveMode);
-    if (parsed.modeCommand) {
-      weaveMode = parsed.modeCommand;
+    if (dispatched.kind === "mode-change") {
+      weaveMode = dispatched.nextMode;
       continue;
     }
 
-    if (!parsed.question) {
+    if (dispatched.kind === "empty") {
       continue;
     }
+
+    const parsed = dispatched;
 
     turn += 1;
     input.recorder.recordUser(turn, rawLine);

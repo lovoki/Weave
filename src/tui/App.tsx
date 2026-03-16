@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import type { AgentRuntime, AgentRunEvent } from "../agent/run-agent.js";
+import { dispatchUserInput } from "../agent/message-dispatcher.js";
 import type { SessionRecorder } from "../session/session-recorder.js";
 import { WeavePlugin } from "../weave/weave-plugin.js";
 import { AgentUiEventGateway } from "./agent-ui-events.js";
 import { useAgentState } from "./use-agent-state.js";
-import { parseTurnInput, type WeaveMode } from "./weave-mode.js";
+import type { WeaveMode } from "./weave-mode.js";
 
 /**
  * 文件作用：Ink 顶层应用组件，负责输入、状态展示与事件桥接。
@@ -511,19 +512,26 @@ export function App(props: AppProps): React.ReactElement {
 
   const processTurn = useCallback(
     async (rawInput: string) => {
-      const parsed = parseTurnInput(rawInput, weaveMode);
+      const dispatched = dispatchUserInput(rawInput, weaveMode);
 
-      if (parsed.modeCommand) {
-        setWeaveMode(parsed.modeCommand);
-        setWeaveActiveTurn(parsed.modeCommand !== "off");
-        setSystemNote(`Weave 会话模式已切换为 ${parsed.modeCommand.toUpperCase()}`);
+      if (dispatched.kind === "mode-change") {
+        setWeaveMode(dispatched.mode);
+        setWeaveActiveTurn(dispatched.mode !== "off");
+        setSystemNote(`Weave 会话模式已切换为 ${dispatched.mode.toUpperCase()}`);
         return;
       }
 
-      if (!parsed.question) {
+      if (dispatched.kind === "quit") {
+        endSession(`command:${dispatched.command}`);
+        return;
+      }
+
+      if (dispatched.kind === "empty") {
         setSystemNote("请输入问题内容，例如：/weave 帮我分析这段代码");
         return;
       }
+
+      const parsed = dispatched;
 
       const nextTurn = turnIndexRef.current + 1;
       turnIndexRef.current = nextTurn;
