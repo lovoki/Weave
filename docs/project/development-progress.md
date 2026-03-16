@@ -9,6 +9,38 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 052 - 重试链路可读性优化（主节点汇总 + 子节点细节）
+
+#### 范围
+优化重试可视化输出噪声，提升 DAG 阅读效率：主节点保留汇总，细节下沉到尝试/修复子节点。
+
+#### 改动
+- 主节点重试汇总口径统一：
+  - `src/agent/run-agent.ts`
+  - 将 `retry=x/y` 统一为 `retries=x/y`
+  - 主节点仅保留简要原因摘要与 `args=updated|unchanged`
+- 子节点细节长度收敛：
+  - `src/agent/run-agent.ts`
+  - `attempt` 与 `repair` 节点 detail 文本按 160 字符截断，减少刷屏噪声
+- 主工具节点去重：
+  - `src/weave/weave-plugin.ts`
+  - `afterToolExecution` 在主节点仅输出 `ok|fail` 状态摘要，不再重复长结果
+  - `summarizeText` 新增统一截断能力（默认 180）
+
+#### 影响文件
+- src/agent/run-agent.ts
+- src/weave/weave-plugin.ts
+
+#### 验证
+- 构建通过：`corepack pnpm build`。
+- 全量回归通过：`corepack pnpm verify:p0`。
+
+#### 待解决问题
+- 乱码文本源于命令执行 stderr 原文（终端编码差异），当前仅做截断不做转码归一。
+
+#### 下一步
+- 可选增强：对子节点 detail 增加“摘要/原文切换”开关，默认摘要，展开时查看完整原文。
+
 ### 2026-03-16 - Entry 051 - 重试全透明化：尝试节点/修复节点/重试生命周期事件
 
 #### 范围

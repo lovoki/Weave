@@ -169,7 +169,7 @@ export class WeavePlugin implements AgentLoopPlugin {
       }),
       this.buildDagDetail({
         nodeId: label,
-        text: `${context.result.ok ? "ok" : "fail"} result=${this.summarizeText(context.result.content)}`
+        text: `${context.result.ok ? "ok" : "fail"}`
       })
     ];
   }
@@ -235,7 +235,7 @@ export class WeavePlugin implements AgentLoopPlugin {
     };
   }
 
-  private summarizeText(value: unknown): string {
+  private summarizeText(value: unknown, maxLength = 180): string {
     if (value === null || value === undefined) {
       return "";
     }
@@ -252,7 +252,11 @@ export class WeavePlugin implements AgentLoopPlugin {
     }
 
     const normalized = text.replace(/\s+/g, " ").trim();
-    return normalized;
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, maxLength)}...`;
   }
 
   private formatToolIntent(toolName: string, args?: unknown): ToolIntentSemantic {

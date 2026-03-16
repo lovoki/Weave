@@ -866,7 +866,7 @@ export class AgentRuntime extends EventEmitter {
             });
             this.emitWeaveDagDetailEvent(runId, {
               nodeId: attemptNodeId,
-              text: `ok elapsed=${attemptElapsedMs}ms result=${this.summarizeForEvent(result.content)}`
+              text: `ok elapsed=${attemptElapsedMs}ms result=${this.summarizeForEvent(result.content, 160)}`
             });
             break;
           }
@@ -879,7 +879,7 @@ export class AgentRuntime extends EventEmitter {
           });
           this.emitWeaveDagDetailEvent(runId, {
             nodeId: attemptNodeId,
-            text: `fail elapsed=${attemptElapsedMs}ms reason=${this.summarizeForEvent(result.content)}`
+            text: `fail elapsed=${attemptElapsedMs}ms reason=${this.summarizeForEvent(result.content, 160)}`
           });
 
           if (attempt <= payload.maxRetries) {
@@ -927,7 +927,7 @@ export class AgentRuntime extends EventEmitter {
             });
             this.emitWeaveDagDetailEvent(runId, {
               nodeId: repairNodeId,
-              text: `${repairedArgs ? "args=updated" : "args=unchanged"} last_error=${this.summarizeForEvent(result.content)}`
+              text: `${repairedArgs ? "args=updated" : "args=unchanged"} last_error=${this.summarizeForEvent(result.content, 160)}`
             });
 
             this.emitRunEvent({
@@ -947,7 +947,7 @@ export class AgentRuntime extends EventEmitter {
 
             this.emitDagNodeDetailEvent(runId, {
               nodeId: detailNodeId,
-              text: `retry=${attempt}/${payload.maxRetries} reason=${this.summarizeForEvent(result.content)}${repairedArgs ? " | args=updated" : " | args=unchanged"}`
+              text: `retries=${attempt}/${payload.maxRetries} ${repairedArgs ? "args=updated" : "args=unchanged"} reason=${this.summarizeForEvent(result.content, 80)}`
             });
           }
         }
