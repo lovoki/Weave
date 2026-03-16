@@ -9,6 +9,35 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 032 - Weave DAG Runtime 技术架构文档沉淀
+
+#### 范围
+将近期关于 Weave 的产品定位、三种模式、DAG 运行时重构思路与中长期演进策略沉淀为可执行技术文档。
+
+#### 改动
+- 新增 Weave 专项架构文档，覆盖：
+  - `weave=off/on/step` 模式语义与运行机制
+  - DAG 节点/边模型、状态机与 Step Gate Promise 拦截机制
+  - Agent-loop 到 DAG Runtime 的分阶段迁移路线
+  - 与工具执行链路的兼容性与一致性保障策略
+  - 规划-执行架构 Agent 的适配策略
+  - 中间件化与独立 Agent 化的阶段性判断标准
+- 在架构总览文档中登记该专项文档。
+
+#### 影响文件
+- docs/project/weave-dag-runtime-architecture.md
+- docs/project/architecture-and-files.md
+
+#### 验证
+- 文档结构检查通过：章节覆盖功能定义、底层架构、迁移与风险。
+- 交叉引用检查通过：架构总览文档已包含新文档登记。
+
+#### 待解决问题
+- 目前为架构设计阶段，尚未落地 `src/runtime/*` 目录和 DagRunner 最小实现。
+
+#### 下一步
+进入实现阶段，先完成事件协议标准化，再抽象 runner 接口并落地最小 DagRunner。
+
 ### 2026-03-15 - Entry 001 - Agent 调用 LLM 最小闭环（Qwen）
 
 #### 范围

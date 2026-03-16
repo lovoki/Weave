@@ -17,6 +17,7 @@ dagent/
     project/
       development-progress.md
       architecture-and-files.md
+      weave-dag-runtime-architecture.md
   src/
     agent/
       plugins/
@@ -174,6 +175,8 @@ dagent/
   - 持续记录开发进度与待解决问题。
 - `docs/project/architecture-and-files.md`
   - 记录当前架构快照与文件职责映射（本文档）。
+- `docs/project/weave-dag-runtime-architecture.md`
+  - 记录 Weave 的完整能力定义、DAG Runtime 底层架构、三种模式语义与迁移路线。
 
 ## 对照 PRD 的当前实现状态
 
