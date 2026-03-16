@@ -27,10 +27,41 @@ export class GraphProjector {
     const out: Array<GraphEnvelope<unknown>> = [];
 
     if (event.type === "run.start") {
+      const userInput = this.stringValue(event.payload?.userInput) || "";
+      const inputNodeId = `${event.runId}:input`;
       out.push(this.wrap<RunStartPayload>(event.runId, "run.start", event.timestamp, {
         sessionId: this.stringValue(event.payload?.sessionId),
         turnIndex: this.numberValue(event.payload?.turnIndex),
-        userInputSummary: this.stringValue(event.payload?.userInput) || ""
+        userInputSummary: userInput
+      }));
+
+      out.push(this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
+        nodeId: inputNodeId,
+        kind: "system",
+        title: this.looksLikeCommand(userInput) ? "终端输入命令" : "终端输入"
+      }));
+
+      out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
+        nodeId: inputNodeId,
+        status: "success"
+      }));
+
+      out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+        nodeId: inputNodeId,
+        inputPorts: [
+          {
+            name: "stdin",
+            type: "text",
+            summary: userInput
+          }
+        ],
+        outputPorts: [
+          {
+            name: "input.text",
+            type: "text",
+            summary: userInput
+          }
+        ]
       }));
     }
 
@@ -139,5 +170,14 @@ export class GraphProjector {
     } catch {
       return null;
     }
+  }
+
+  private looksLikeCommand(text: string): boolean {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    return /[|><]/.test(trimmed) || /\b(ls|dir|cat|grep|findstr|awk|sed|pnpm|npm|git|node|python)\b/i.test(trimmed);
   }
 }

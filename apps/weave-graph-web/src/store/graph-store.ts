@@ -34,6 +34,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           id: payload.nodeId,
           position: { x: 0, y: 0 },
           data: {
+            label: payload.title,
             title: payload.title,
             kind: payload.kind
           }
@@ -46,6 +47,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         ...nextNodes[index],
         data: {
           ...nextNodes[index].data,
+          label: payload.title,
           title: payload.title,
           kind: payload.kind
         }
@@ -72,7 +74,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === payload.nodeId
-          ? { ...n, data: { ...n.data, status: payload.status } }
+          ? { ...n, data: { ...n.data, status: payload.status, label: `${n.data.title} [${payload.status}]` } }
           : n
       )
     }));

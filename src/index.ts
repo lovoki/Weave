@@ -1,6 +1,6 @@
 import { render } from "ink";
 import { loadLlmConfig } from "./config/load-llm-config.js";
-import { AgentRuntime } from "./agent/run-agent.js";
+import { AgentRuntime, type AgentRunEvent } from "./agent/run-agent.js";
 import { dispatchUserInput } from "./agent/message-dispatcher.js";
 import { MemoryStore } from "./memory/memory-store.js";
 import { AppLogger, writeConversationChainLog, type ConversationChainStep } from "./logging/app-logger.js";
@@ -40,6 +40,7 @@ async function main(): Promise<void> {
 
   const agent = new AgentRuntime(llmConfig, memoryStore, toolRegistry);
   agent.startSession(sessionId);
+  setupGraphEventForwarder(agent, logger);
 
   // 会话级 jsonl 记录器：记录每轮输入输出与会话生命周期。
   const recorder = new SessionRecorder(sessionId);
@@ -227,6 +228,36 @@ async function readAllStdinText(): Promise<string> {
 function createSessionId(): string {
   const randomPart = Math.random().toString(36).slice(2, 10);
   return `session_${Date.now()}_${randomPart}`;
+}
+
+function setupGraphEventForwarder(agent: AgentRuntime, logger: AppLogger): void {
+  const ingestUrl = process.env.WEAVE_GRAPH_INGEST_URL?.trim() ?? "";
+  const ingestToken = process.env.WEAVE_GRAPH_TOKEN?.trim() ?? "";
+  if (!ingestUrl) {
+    return;
+  }
+
+  logger.info("graph.forwarder.enabled", "已启用二维图事件转发", {
+    ingestUrl,
+    hasToken: Boolean(ingestToken)
+  });
+
+  agent.on("event", (evt: AgentRunEvent) => {
+    void fetch(ingestUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(ingestToken ? { "x-graph-token": ingestToken } : {})
+      },
+      body: JSON.stringify(evt)
+    }).catch((error) => {
+      logger.error("graph.forwarder.error", "二维图事件转发失败", {
+        eventType: evt.type,
+        runId: evt.runId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  });
 }
 
 main().catch((error: unknown) => {

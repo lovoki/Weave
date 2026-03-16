@@ -9,6 +9,50 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 055 - 二维图链路打通（CLI 事件转发 -> Graph Projection -> WS -> 前端）
+
+#### 范围
+打通首条端到端链路：现有 CLI Runtime 事件实时转发到图服务，前端可接收并展示“终端输入命令”节点。
+
+#### 改动
+- CLI 运行时事件转发：
+  - `src/index.ts`
+  - 新增 `setupGraphEventForwarder`，订阅 `agent.on("event")` 并 POST 到图服务 ingest 接口
+  - 支持环境变量：
+    - `WEAVE_GRAPH_INGEST_URL`
+    - `WEAVE_GRAPH_TOKEN`
+- 图投影增强：
+  - `apps/weave-graph-server/src/projection/graph-projector.ts`
+  - `run.start` 事件自动投影为输入节点：
+    - `node.upsert`（title=`终端输入命令` 或 `终端输入`）
+    - `node.status=success`
+    - `node.io`（stdin/input.text）
+- 图网关增强：
+  - `apps/weave-graph-server/src/gateway/ws-gateway.ts`
+  - 新增 `POST /ingest/runtime-event`（token 鉴权）
+  - 网关启动时输出 `ingestUrl + token`
+- 前端节点可见性增强：
+  - `apps/weave-graph-web/src/store/graph-store.ts`
+  - `apps/weave-graph-web/src/types/graph-events.ts`
+  - 默认节点补充 `label`，状态变化时更新标签，确保 React Flow 默认节点可见
+
+#### 影响文件
+- src/index.ts
+- apps/weave-graph-server/src/gateway/ws-gateway.ts
+- apps/weave-graph-server/src/index.ts
+- apps/weave-graph-server/src/projection/graph-projector.ts
+- apps/weave-graph-web/src/store/graph-store.ts
+- apps/weave-graph-web/src/types/graph-events.ts
+
+#### 验证
+- 主项目构建通过：`corepack pnpm build`。
+
+#### 待解决问题
+- 当前前端布局仍为全量 Dagre 重算，尚未启用 80~120ms 批处理与拖拽锁定回写。
+
+#### 下一步
+- 接入布局批处理节流与锁定节点策略；补充 node.io 多端口渲染卡片。
+
 ### 2026-03-16 - Entry 054 - 二维图工程蓝图落地（Server/Web 骨架 + 协议 + 布局管线）
 
 #### 范围

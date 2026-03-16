@@ -28,6 +28,7 @@ export interface GraphPort {
 }
 
 export interface GraphNodeData {
+  label?: string;
   title: string;
   kind: string;
   status?: string;

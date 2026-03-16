@@ -185,6 +185,7 @@ dagent/
   - 新增非 TTY 回退执行模式（脚本/管道输入）：支持按行多轮处理与 `/q` 退出。
   - 会话结束时输出单独调用链路文档，且不记录流式分片正文。
   - 对输入接收、事件消费、运行结果进行日志打标。
+  - 新增二维图事件转发：可通过 `WEAVE_GRAPH_INGEST_URL/WEAVE_GRAPH_TOKEN` 将 Runtime 事件转发到图服务。
 - `src/tui/agent-ui-events.ts`
   - TUI 事件网关：将 Runtime 事件映射为 UI 语义事件（`agent:start`、`agent:thought`、`tool:start`、`tool:end`、`agent:finish`、`agent:error`）。
   - 支持解析 Weave 结构化事件：`weave.dag.node`、`weave.dag.detail`、`weave.dag.event`。
@@ -246,10 +247,11 @@ dagent/
   - Runtime 事件到图协议事件的归一化投影器。
 - `apps/weave-graph-server/src/gateway/ws-gateway.ts`
   - 本地 WS 网关（127.0.0.1 + token + Origin 校验 + 心跳）。
+  - 提供 `POST /ingest/runtime-event` 接口，接收主 CLI 转发的 Runtime 事件。
 - `apps/weave-graph-server/src/index.ts`
-  - 服务端骨架入口，连接 Runtime 事件转发链。
+  - 服务端骨架入口，连接 Runtime 事件转发链并输出 `ingestUrl + token`。
 - `apps/weave-graph-web/src/store/graph-store.ts`
-  - Zustand 图状态单一真相源与增量事件应用。
+  - Zustand 图状态单一真相源与增量事件应用（含默认 label 可见性策略）。
 - `apps/weave-graph-web/src/layout/dagre-layout.ts`
   - Dagre 自动布局管线（首阶段全量布局）。
 - `apps/weave-graph-web/src/workers/layout.worker.ts`

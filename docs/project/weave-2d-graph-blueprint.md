@@ -66,7 +66,10 @@ apps/
 2. 在 `apps/weave-graph-web` 安装依赖并启动。
 3. 将 server 打印的 `port/token` 注入 web URL 参数：
    - `http://127.0.0.1:5173/?port=<port>&token=<token>`
-4. 将 Runtime 事件接到 `GraphProjector.project(...)` 的 `forward` 函数。
+4. 在主 CLI 进程注入环境变量，开启 Runtime -> GraphServer 转发：
+  - `WEAVE_GRAPH_INGEST_URL=http://127.0.0.1:<port>/ingest/runtime-event`
+  - `WEAVE_GRAPH_TOKEN=<token>`
+5. 启动主 CLI 后，`run.start` 会自动投影出“终端输入命令”节点，验证链路是否打通。
 
 ## 下一阶段建议
 - 增加 `blobRef` 详情拉取 API（避免大文本全量推送）。
