@@ -727,29 +727,6 @@ export function App(props: AppProps): React.ReactElement {
 
       return prev;
     });
-
-    setExpandedDagNodeIds((prev) => {
-      if (prev.size === 0) {
-        return new Set<string>([latestNodeId]);
-      }
-
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (visibleDagNodeIds.includes(id)) {
-          next.add(id);
-        }
-      }
-
-      if (next.size === 0) {
-        next.add(latestNodeId);
-      }
-
-      if (areSetsEqual(prev, next)) {
-        return prev;
-      }
-
-      return next;
-    });
   }, [visibleDagNodeIds]);
 
   useEffect(() => {
@@ -761,13 +738,7 @@ export function App(props: AppProps): React.ReactElement {
     if (activeDagNodeId) {
       setSelectedDagNodeId((prev) => (prev === activeDagNodeId ? prev : activeDagNodeId));
       setExpandedDagNodeIds((prev) => {
-        const next = new Set(prev);
-        const previousActive = previousActiveDagNodeIdRef.current;
-        if (previousActive && previousActive !== activeDagNodeId) {
-          next.delete(previousActive);
-        }
-
-        next.add(activeDagNodeId);
+        const next = new Set<string>([activeDagNodeId]);
         if (areSetsEqual(prev, next)) {
           return prev;
         }
@@ -776,6 +747,12 @@ export function App(props: AppProps): React.ReactElement {
       });
 
       previousActiveDagNodeIdRef.current = activeDagNodeId;
+      return;
+    }
+
+    if (runActive) {
+      // 运行中但当前无活动节点时，先折叠全部，避免上一节点残留展开造成抖动与视觉噪声。
+      setExpandedDagNodeIds((prev) => (prev.size === 0 ? prev : new Set<string>()));
       return;
     }
 
