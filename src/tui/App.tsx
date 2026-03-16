@@ -128,6 +128,28 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+function estimateDisplayWidth(text: string): number {
+  // 终端宽度按“显示列”计数；CJK 字符通常占 2 列。
+  return Array.from(text).reduce((sum, char) => {
+    const code = char.codePointAt(0) ?? 0;
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) {
+      return sum;
+    }
+
+    const isWide =
+      (code >= 0x1100 && code <= 0x115f) ||
+      (code >= 0x2e80 && code <= 0xa4cf) ||
+      (code >= 0xac00 && code <= 0xd7a3) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xfe10 && code <= 0xfe19) ||
+      (code >= 0xfe30 && code <= 0xfe6f) ||
+      (code >= 0xff00 && code <= 0xff60) ||
+      (code >= 0xffe0 && code <= 0xffe6);
+
+    return sum + (isWide ? 2 : 1);
+  }, 0);
+}
+
 function areSetsEqual(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) {
     return false;
@@ -483,8 +505,9 @@ export function App(props: AppProps): React.ReactElement {
   const TRANSCRIPT_MAX_LINES = 200;
   const terminalWidth = clamp(process.stdout.columns || 100, 60, 180);
   const separatorWidth = clamp(terminalWidth - 2, 24, 176);
+  const contentWidth = separatorWidth;
+  const rootWidth = contentWidth + 2;
   const transcriptTextMax = clamp(terminalWidth - 8, 28, 140);
-  const inputTextMax = clamp(terminalWidth - 18, 18, 120);
 
   const turnIndexRef = useRef(0);
   const lastRunIdRef = useRef("");
@@ -611,7 +634,7 @@ export function App(props: AppProps): React.ReactElement {
     [uiState.weaveDagNodes, expandedDagNodeIds]
   );
   const visibleDagNodeIds = useMemo(
-    () => buildVisibleDagNodeIds(uiState.weaveDagNodes).sort(compareNodeId),
+    () => buildVisibleDagNodeIds(uiState.weaveDagNodes),
     [uiState.weaveDagNodes]
   );
   const runActive = busy || uiState.status === "thinking" || uiState.status === "using_tool";
@@ -626,10 +649,6 @@ export function App(props: AppProps): React.ReactElement {
     const latestNodeId = visibleDagNodeIds[visibleDagNodeIds.length - 1];
 
     setSelectedDagNodeId((prev) => {
-      if (runActive) {
-        return latestNodeId;
-      }
-
       if (!prev || !visibleDagNodeIds.includes(prev)) {
         return latestNodeId;
       }
@@ -638,15 +657,6 @@ export function App(props: AppProps): React.ReactElement {
     });
 
     setExpandedDagNodeIds((prev) => {
-      if (runActive) {
-        const target = new Set<string>([latestNodeId]);
-        if (areSetsEqual(prev, target)) {
-          return prev;
-        }
-
-        return target;
-      }
-
       if (prev.size === 0) {
         return new Set<string>([latestNodeId]);
       }
@@ -668,7 +678,7 @@ export function App(props: AppProps): React.ReactElement {
 
       return next;
     });
-  }, [visibleDagNodeIds, runActive]);
+  }, [visibleDagNodeIds]);
 
   useEffect(() => {
     setInputCursor((prev) => clamp(prev, 0, input.length));
@@ -965,9 +975,15 @@ export function App(props: AppProps): React.ReactElement {
             ? "error"
             : "idle";
 
+  const inputPrefix = pendingApproval && approvalEditing ? "edit(args) ▸ " : `你(${turnIndex + 1}) ▸ `;
+  // single + paddingX(1+1) + border(1+1) = 4 列开销。
+  const inputInnerWidth = Math.max(12, contentWidth - 4);
+  const inputPrefixWidth = estimateDisplayWidth(inputPrefix);
+  const inputTextMax = Math.max(8, inputInnerWidth - inputPrefixWidth);
+
   return (
-    <Box flexDirection="column" padding={1}>
-      <Box flexDirection="column">
+    <Box flexDirection="column" padding={1} width={rootWidth}>
+      <Box flexDirection="column" width={contentWidth}>
         <Text color={THEME.primaryStrong}>Weave · session {props.sessionId}</Text>
         <Text color={THEME.muted}>
           {systemNote} | {statusText}
@@ -979,9 +995,9 @@ export function App(props: AppProps): React.ReactElement {
         <Text color={THEME.border}>{"─".repeat(separatorWidth)}</Text>
       </Box>
 
-      <Box marginTop={0} flexDirection="column">
+      <Box marginTop={0} flexDirection="column" width={contentWidth}>
         {weaveTreeLines.length > 0 ? (
-          <Box borderStyle="round" borderColor={THEME.border} paddingX={1} flexDirection="column" marginBottom={1}>
+          <Box borderStyle="round" borderColor={THEME.border} paddingX={1} flexDirection="column" marginBottom={1} width={contentWidth}>
             <Text color={THEME.primaryStrong}>⎈ WEAVE DAG</Text>
             {latestUserQuestion ? (
               <Box marginBottom={1}>
@@ -1062,8 +1078,8 @@ export function App(props: AppProps): React.ReactElement {
         ))}
       </Box>
 
-      <Box marginTop={0} borderStyle="single" borderColor={THEME.primary} paddingX={1}>
-        <Text color={THEME.primary}>{pendingApproval && approvalEditing ? "edit(args) ▸ " : `你(${turnIndex + 1}) ▸ `}</Text>
+      <Box marginTop={0} borderStyle="single" borderColor={THEME.primary} paddingX={1} width={contentWidth}>
+        <Text color={THEME.primary}>{inputPrefix}</Text>
         <Text color={THEME.text}>
           {input
             ? renderInputWithCursor(input, inputCursor, inputTextMax)

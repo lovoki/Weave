@@ -211,6 +211,14 @@ export function useAgentState(gateway: AgentUiEventGateway): AgentUiState {
         }
 
         const current = prev[index];
+        const isSameSemanticState =
+          current.parentId === event.parentId &&
+          current.label === event.label &&
+          current.status === event.status;
+        if (isSameSemanticState) {
+          return prev;
+        }
+
         const extraPausedMs =
           (event.status === "success" || event.status === "fail") && current.pausedAtMs
             ? Math.max(0, now - current.pausedAtMs)
@@ -247,6 +255,11 @@ export function useAgentState(gateway: AgentUiEventGateway): AgentUiState {
 
         const next = [...prev];
         const current = next[index];
+        const lastDetail = current.details[current.details.length - 1] ?? "";
+        if (lastDetail === event.text) {
+          return prev;
+        }
+
         const details = [...current.details, event.text].slice(-8);
         next[index] = {
           ...current,

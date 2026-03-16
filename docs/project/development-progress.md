@@ -9,6 +9,65 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 041 - 输入行尾抖动修复（显示列宽对齐）
+
+#### 范围
+修复“仅在输入到终端行尾后继续输入时发生抖动”的问题，保持 TUI 布局样式不变。
+
+#### 改动
+- `src/tui/App.tsx`
+  - 新增显示列宽估算函数 `estimateDisplayWidth`，用于按终端列宽计算文本占位。
+  - 输入区最大可显示长度改为基于“输入框实际内宽 - 前缀显示宽度”动态计算。
+  - 统一复用 `inputPrefix`，避免前缀宽度与内容宽度估算不一致。
+- 保留之前去抖改动：
+  - `src/tui/use-agent-state.ts` 节点与 detail 重复事件去重，降低高频重渲染。
+
+#### 影响文件
+- src/tui/App.tsx
+- src/tui/use-agent-state.ts
+- docs/project/development-progress.md
+
+#### 验证
+- 构建通过：`corepack pnpm build`。
+- 全量回归通过：`corepack pnpm verify:p0`。
+
+#### 待解决问题
+- 若终端字体对某些符号宽度计算与标准 East Asian Width 不一致，极端情况下仍可能出现 1 列级别偏差。
+
+#### 下一步
+- 如有需要，可进一步将输入渲染切换为“显式截断模式（truncate-end）+ 固定列容器”做兜底。
+
+### 2026-03-16 - Entry 040 - TUI 去抖优化（不改布局样式）
+
+#### 范围
+在保持现有 TUI 布局与视觉样式不变的前提下，仅消除导致画面抖动/跳动的冗余状态更新。
+
+#### 改动
+- 去重 DAG 节点重复更新：
+  - `src/tui/use-agent-state.ts`
+  - 当 `nodeId` 对应的 `parentId/label/status` 未变化时，不再重复写入 `updatedAtMs` 与状态对象。
+- 去重 DAG 明细重复更新：
+  - `src/tui/use-agent-state.ts`
+  - 当连续 detail 文本相同，不再追加，避免无意义重渲染。
+- 去除运行期自动焦点追逐导致的视图跳动：
+  - `src/tui/App.tsx`
+  - DAG 节点选中与展开状态不再在 runActive 期间强制跳到最新节点，改为“仅在当前选中失效时回落到最新”。
+  - 移除重复排序调用，保持可见节点顺序稳定来源单一。
+
+#### 影响文件
+- src/tui/use-agent-state.ts
+- src/tui/App.tsx
+
+#### 验证
+- 构建通过：`corepack pnpm build`。
+- 全量回归通过：`corepack pnpm verify:p0`。
+
+#### 待解决问题
+- 当前尚未引入专门的帧级节流策略（如 16~33ms 批量合并更新），极高事件密度下仍可能出现轻微刷新感。
+
+#### 下一步
+- 如需进一步平滑，可增加“事件批处理 + 帧节流”开关，但默认保持当前轻量实现。
+
 ### 2026-03-16 - Entry 039 - 新增内置文件写入工具 write_file
 
 #### 范围
