@@ -927,7 +927,7 @@ export class AgentRuntime extends EventEmitter {
             this.emitWeaveDagNodeEvent(runId, {
               nodeId: repairNodeId,
               parentId: detailNodeId,
-              label: `LLM局部修复参数 #${attempt}`,
+              label: `局部修复参数 #${attempt}`,
               status: "success"
             });
             this.emitWeaveDagDetailEvent(runId, {

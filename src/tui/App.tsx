@@ -342,7 +342,7 @@ function semanticToolTitle(label: string, details: string[]): string {
 }
 
 function isRepairLlmNodeLabel(label: string): boolean {
-  return label.includes("LLM局部修复参数");
+  return label.includes("局部修复参数");
 }
 
 function summarizeApprovalIntent(toolName: string, argsText: string): string {

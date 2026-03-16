@@ -18,6 +18,10 @@ dagent/
       development-progress.md
       architecture-and-files.md
       weave-dag-runtime-architecture.md
+      weave-2d-graph-blueprint.md
+  apps/
+    weave-graph-server/
+    weave-graph-web/
   src/
     agent/
       plugins/
@@ -72,6 +76,18 @@ dagent/
 - 提供执行内核抽象（legacy / dag）与选择器。
 - 当前默认走 legacy 运行器，保持行为兼容。
 - 为后续 DagRunner 渐进替换预留扩展位。
+
+11. 二维图投影层（Graph Projection Layer）
+- 负责将 Runtime 原始事件归一化为图协议事件（node/edge/status/io）。
+- 负责协议版本控制、序号去重基础与前端可消费结构。
+
+12. 二维图网关层（Graph WS Gateway Layer）
+- 负责本地 WebSocket 推送图协议事件。
+- 负责 token 校验、Origin 限制、心跳保活。
+
+13. 二维图前端层（Graph Web Layer）
+- 负责 Zustand 图状态管理、React Flow 渲染与 Dagre 自动布局。
+- 预留 Worker 布局管线，后续可升级 ELK 增量布局。
 
 ## 文件职责说明
 
@@ -220,6 +236,26 @@ dagent/
   - 记录当前架构快照与文件职责映射（本文档）。
 - `docs/project/weave-dag-runtime-architecture.md`
   - 记录 Weave 的完整能力定义、DAG Runtime 底层架构、三种模式语义与迁移路线。
+- `docs/project/weave-2d-graph-blueprint.md`
+  - 记录二维图工程蓝图、协议设计与联调步骤。
+
+### 二维图骨架文件
+- `apps/weave-graph-server/src/protocol/graph-events.ts`
+  - 图协议类型定义（schemaVersion、node/edge/status/io 等事件）。
+- `apps/weave-graph-server/src/projection/graph-projector.ts`
+  - Runtime 事件到图协议事件的归一化投影器。
+- `apps/weave-graph-server/src/gateway/ws-gateway.ts`
+  - 本地 WS 网关（127.0.0.1 + token + Origin 校验 + 心跳）。
+- `apps/weave-graph-server/src/index.ts`
+  - 服务端骨架入口，连接 Runtime 事件转发链。
+- `apps/weave-graph-web/src/store/graph-store.ts`
+  - Zustand 图状态单一真相源与增量事件应用。
+- `apps/weave-graph-web/src/layout/dagre-layout.ts`
+  - Dagre 自动布局管线（首阶段全量布局）。
+- `apps/weave-graph-web/src/workers/layout.worker.ts`
+  - 布局 Worker 预留骨架（后续 ELK 增量布局）。
+- `apps/weave-graph-web/src/App.tsx`
+  - React Flow 主界面骨架与 WS 接入。
 
 ## 对照 PRD 的当前实现状态
 

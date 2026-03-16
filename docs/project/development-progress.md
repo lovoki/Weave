@@ -9,6 +9,48 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 054 - 二维图工程蓝图落地（Server/Web 骨架 + 协议 + 布局管线）
+
+#### 范围
+按工业级最小方案落地二维图可开工骨架：后端 Graph Projection + WS 推送，前端 React Flow + Zustand + Dagre。
+
+#### 改动
+- 新增后端子工程骨架（独立于主 CLI 构建链路）：
+  - `apps/weave-graph-server/package.json`
+  - `apps/weave-graph-server/tsconfig.json`
+  - `apps/weave-graph-server/src/protocol/graph-events.ts`
+  - `apps/weave-graph-server/src/projection/graph-projector.ts`
+  - `apps/weave-graph-server/src/gateway/ws-gateway.ts`
+  - `apps/weave-graph-server/src/index.ts`
+- 新增前端子工程骨架：
+  - `apps/weave-graph-web/package.json`
+  - `apps/weave-graph-web/tsconfig.json`
+  - `apps/weave-graph-web/vite.config.ts`
+  - `apps/weave-graph-web/index.html`
+  - `apps/weave-graph-web/src/types/graph-events.ts`
+  - `apps/weave-graph-web/src/store/graph-store.ts`
+  - `apps/weave-graph-web/src/layout/dagre-layout.ts`
+  - `apps/weave-graph-web/src/workers/layout.worker.ts`
+  - `apps/weave-graph-web/src/App.tsx`
+  - `apps/weave-graph-web/src/main.tsx`
+- 新增蓝图文档：
+  - `docs/project/weave-2d-graph-blueprint.md`
+  - 包含目录结构、协议最小集合、联调步骤与下一阶段建议
+
+#### 影响文件
+- apps/weave-graph-server/**
+- apps/weave-graph-web/**
+- docs/project/weave-2d-graph-blueprint.md
+
+#### 验证
+- 主项目构建通过：`corepack pnpm build`（确认新增骨架未影响现有 CLI 构建）。
+
+#### 待解决问题
+- 当前仅为可开工骨架，尚未把主 Runtime 真实事件流接入 `GraphProjector` 生产链路。
+
+#### 下一步
+- 将 `src/agent/run-agent.ts` 的 `event` 订阅接入 `GraphProjector`，打通端到端实时二维图。
+
 ### 2026-03-16 - Entry 053 - 局部修复节点语义升级（LLM输出 + 修复后参数）
 
 #### 范围
