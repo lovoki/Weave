@@ -9,6 +9,52 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 048 - Weave 模式扩展：observe/auto 接线与重试策略分层
+
+#### 范围
+继续后续阶段实现：将 `/weave on` 语义升级为 `/weave observe`（兼容别名），新增 `/weave auto` 并打通到执行层重试开关。
+
+#### 改动
+- 模式解析与语义扩展：
+  - `src/tui/weave-mode.ts`
+  - `WeaveMode` 扩展为 `off|observe|step|auto`
+  - 支持 `/weave observe`、`/weave auto`，并将 `/weave on` 映射为 `observe`
+  - 新增 `autoMode` 标记，供执行层透传
+- 入口与交互链路透传：
+  - `src/agent/message-dispatcher.ts`
+  - `src/tui/App.tsx`
+  - `src/index.ts`
+  - 问答分发结构与 `runOnceStream` 选项新增 `autoMode`
+  - TUI 系统提示文案区分 `STEP/AUTO/OBSERVE`
+- 执行策略分层：
+  - `src/runtime/runner-types.ts`
+  - `src/agent/run-agent.ts`
+  - `RunOnceStreamOptions` 新增 `autoMode?: boolean`
+  - 将工具失败自动重试从“默认开启”调整为“仅 auto 模式开启”
+  - `observe` 仅观察执行，不做自动参数修复重试
+- 回归脚本对齐新语义：
+  - `scripts/verify-dag-matrix.mjs`
+  - 重试路径用例显式传入 `autoMode: true`
+
+#### 影响文件
+- src/tui/weave-mode.ts
+- src/agent/message-dispatcher.ts
+- src/runtime/runner-types.ts
+- src/tui/App.tsx
+- src/index.ts
+- src/agent/run-agent.ts
+- scripts/verify-dag-matrix.mjs
+
+#### 验证
+- 构建通过：`corepack pnpm build`。
+- 全量回归通过：`corepack pnpm verify:p0`。
+
+#### 待解决问题
+- 当前 auto/observe 的差异主要体现在“失败自动修复重试”开关，后续可进一步补充更细粒度策略（例如不同工具的独立重试预算）。
+
+#### 下一步
+- 可选增强：为 `/weave status` 增加当前模式与关键策略（审批、重试）的汇总展示。
+
 ### 2026-03-16 - Entry 047 - 意图驱动工具调用与轻量重试链路落地
 
 #### 范围

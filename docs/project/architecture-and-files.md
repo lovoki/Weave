@@ -125,10 +125,11 @@ dagent/
   - 提供 `startSession(sessionId)` 初始化会话，并维护多轮历史上下文。
   - 在调用前通过 `MemoryStore` 组装系统提示词并注入模型。
   - 内置双执行路径：Legacy loop 与最小 DagRunner。
-  - 在 `weave=off` 时走 legacy；`weave=on/step` 时走 DagRunner。
+  - 在 `weave=off` 时走 legacy；`weave=observe/step/auto` 时走 DagRunner（`on` 兼容映射到 `observe`）。
   - DagRunner 以节点/依赖图驱动执行，保留现有插件钩子与 Step Gate 事件。
   - 新增 LLM 调用复用层（`invokeLlmWithTools` / `invokeLlmText`），供主链路与工具重试共享。
   - 新增工具意图派生（intent/goal）与轻量重试机制：失败重试仅携带意图、上次参数、最近一次结果。
+  - 新增 `autoMode` 运行参数：仅在 auto 模式开启失败自动修复重试；observe 模式默认不自动重试。
   - 在流式调用过程中发布 `run.start`、`llm.request`、`llm.delta`、`llm.completed`、`run.completed`、`run.error` 事件。
   - 新增工具事件：`tool.execution.start`、`tool.execution.end`。
   - 新增 Step Gate 事件：`node.pending_approval`、`node.approval.resolved`。
@@ -138,9 +139,9 @@ dagent/
   - 对事件发布、调用开始/结束/异常进行日志打标。
 - `src/agent/message-dispatcher.ts`
   - 输入分发层：统一对用户输入做命令拦截、模式切换与问答消息分类。
-  - 将控制命令（如 `/weave on`、`/q`）与问答执行解耦，避免 UI/入口层重复分支逻辑。
+  - 将控制命令（如 `/weave observe|auto|step|off`、`/q`）与问答执行解耦，避免 UI/入口层重复分支逻辑。
 - `src/runtime/runner-types.ts`
-  - 定义 Runner 抽象契约与运行参数类型（含 Step Gate 审批类型）。
+  - 定义 Runner 抽象契约与运行参数类型（含 Step Gate 审批类型与 `autoMode` 开关）。
 - `src/runtime/runner-legacy.ts`
   - legacy 运行器适配层：将执行请求委托给现有 Agent-loop。
 - `src/runtime/runner-dag.ts`
@@ -159,7 +160,7 @@ dagent/
   - 显式初始化 `MemoryStore` 并注入 Agent Runtime。
   - 装配 TUI 应用并负责会话收尾（chain log / session 文件路径输出）。
   - 负责会话生命周期管理（sessionId、退出命令、双 Ctrl+C）。
-  - 支持会话级 `/weave on|off|step` 模式切换，并兼容 `/weave + 问题` 行内触发。
+  - 支持会话级 `/weave observe|auto|step|off` 模式切换，并兼容 `/weave on` 与 `/weave + 问题` 行内触发。
   - 新增非 TTY 回退执行模式（脚本/管道输入）：支持按行多轮处理与 `/q` 退出。
   - 会话结束时输出单独调用链路文档，且不记录流式分片正文。
   - 对输入接收、事件消费、运行结果进行日志打标。
@@ -177,6 +178,7 @@ dagent/
   - 输入监听在非 TTY 场景自动失活，避免 raw mode 报错。
 - `src/tui/weave-mode.ts`
   - 统一封装 Weave 模式与行内 `/weave` 解析逻辑，供 `App.tsx` 与 `index.ts` 复用。
+  - 支持 `off|observe|step|auto`，其中 `on` 作为 `observe` 兼容别名。
 - `src/session/session-recorder.ts`
   - 管理会话级 jsonl 记录，按 sessionId 持久化每轮输入输出。
   - 记录 `session_start` / `session_end` / `message` / `error` 事件。

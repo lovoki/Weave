@@ -110,7 +110,8 @@ async function verifyRetryRecovery(config) {
   });
 
   const finalText = await runtime.runOnceStream("retry test", {
-    plugins: [new WeavePlugin()]
+    plugins: [new WeavePlugin()],
+    autoMode: true
   });
 
   assert(finalText === "retry-ok", "retry path should still finish with final response");

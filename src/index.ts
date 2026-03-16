@@ -160,6 +160,7 @@ async function runBatchSession(input: {
       const finalText = await input.agent.runOnceStream(parsed.question, {
         plugins,
         stepMode: parsed.enableWeave && parsed.stepMode,
+        autoMode: parsed.enableWeave && parsed.autoMode,
         approveToolCall:
           parsed.enableWeave && parsed.stepMode
             ? async () => {

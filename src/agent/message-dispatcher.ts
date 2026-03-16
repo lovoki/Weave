@@ -24,6 +24,7 @@ export type DispatchedInput =
       nextMode: WeaveMode;
       enableWeave: boolean;
       stepMode: boolean;
+      autoMode: boolean;
     };
 
 /**
@@ -61,6 +62,7 @@ export function dispatchUserInput(rawInput: string, currentMode: WeaveMode): Dis
     question: parsed.question,
     enableWeave: parsed.enableWeave,
     stepMode: parsed.stepMode,
+    autoMode: parsed.autoMode,
     nextMode: currentMode
   };
 }

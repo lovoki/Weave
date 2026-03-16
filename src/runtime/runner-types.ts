@@ -20,6 +20,7 @@ export interface ToolApprovalDecision {
 export interface RunOnceStreamOptions {
   plugins?: AgentLoopPlugin[];
   stepMode?: boolean;
+  autoMode?: boolean;
   approveToolCall?: (request: ToolApprovalRequest) => Promise<ToolApprovalDecision>;
 }
 

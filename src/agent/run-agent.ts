@@ -74,6 +74,7 @@ export interface AgentRunEvent {
 
 interface StepGateOptions {
   enabled: boolean;
+  autoMode?: boolean;
   approveToolCall?: (request: ToolApprovalRequest) => Promise<ToolApprovalDecision>;
 }
 
@@ -238,6 +239,7 @@ export class AgentRuntime extends EventEmitter {
         basePluginContext,
         {
           enabled: options?.stepMode === true,
+          autoMode: options?.autoMode === true,
           approveToolCall: options?.approveToolCall
         }
       );
@@ -362,6 +364,7 @@ export class AgentRuntime extends EventEmitter {
         basePluginContext,
         {
           enabled: options?.stepMode === true,
+          autoMode: options?.autoMode === true,
           approveToolCall: options?.approveToolCall
         }
       );
@@ -457,7 +460,7 @@ export class AgentRuntime extends EventEmitter {
     };
 
     const maxSteps = 6;
-    const defaultToolRetries = Number(process.env.WEAVE_DAG_TOOL_RETRIES ?? "1");
+    const defaultToolRetries = stepGate.autoMode === true ? Number(process.env.WEAVE_DAG_TOOL_RETRIES ?? "1") : 0;
     const defaultToolTimeoutMs = Number(process.env.WEAVE_DAG_TOOL_TIMEOUT_MS ?? "15000");
     const modelTools = this.toolRegistry.listModelTools();
     const graph = new DagExecutionGraph();
@@ -1120,7 +1123,7 @@ export class AgentRuntime extends EventEmitter {
           this.emitPluginOutput(runId, output);
         }
 
-        const maxRetries = Number(process.env.WEAVE_DAG_TOOL_RETRIES ?? "1");
+        const maxRetries = stepGate.autoMode === true ? Number(process.env.WEAVE_DAG_TOOL_RETRIES ?? "1") : 0;
         let result: ToolExecuteResult =
           skipByApproval
             ? {

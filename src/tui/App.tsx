@@ -636,7 +636,7 @@ export function App(props: AppProps): React.ReactElement {
       setBusy(true);
       setSystemNote(
         parsed.enableWeave
-          ? `本轮已启用 Weave (${parsed.stepMode ? "STEP" : "DAG"}) 模式`
+          ? `本轮已启用 Weave (${parsed.stepMode ? "STEP" : parsed.autoMode ? "AUTO" : "OBSERVE"}) 模式`
           : "本轮使用普通模式"
       );
 
@@ -647,6 +647,7 @@ export function App(props: AppProps): React.ReactElement {
         const finalText = await props.agent.runOnceStream(parsed.question, {
           plugins,
           stepMode: parsed.enableWeave && parsed.stepMode,
+          autoMode: parsed.enableWeave && parsed.autoMode,
           approveToolCall:
             parsed.enableWeave && parsed.stepMode
               ? async (request) => {
