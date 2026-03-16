@@ -384,7 +384,8 @@ function buildWeaveTreeLines(
     pausedDurationMs: number;
     details: string[];
   }>,
-  expandedNodeIds: Set<string>
+  expandedNodeIds: Set<string>,
+  forceVisibleNodeIds: Set<string>
 ): TreeLine[] {
   if (nodes.length === 0) {
     return [];
@@ -438,7 +439,10 @@ function buildWeaveTreeLines(
     list.forEach((node, index) => {
       const children = byParent.get(node.id) ?? [];
       const shouldFlattenThisNode =
-        !node.id.includes(".") && children.length > 0 && isLowSignalDecisionLabel(node.label);
+        !node.id.includes(".") &&
+        children.length > 0 &&
+        isLowSignalDecisionLabel(node.label) &&
+        !forceVisibleNodeIds.has(node.id);
 
       if (shouldFlattenThisNode) {
         walk(children, prefix, depth);
@@ -501,7 +505,8 @@ function buildVisibleDagNodeIds(
     id: string;
     parentId?: string;
     label: string;
-  }>
+  }>,
+  forceVisibleNodeIds: Set<string>
 ): string[] {
   if (nodes.length === 0) {
     return [];
@@ -526,7 +531,10 @@ function buildVisibleDagNodeIds(
     for (const node of list) {
       const children = byParent.get(node.id) ?? [];
       const shouldFlattenThisNode =
-        !node.id.includes(".") && children.length > 0 && isLowSignalDecisionLabel(node.label);
+        !node.id.includes(".") &&
+        children.length > 0 &&
+        isLowSignalDecisionLabel(node.label) &&
+        !forceVisibleNodeIds.has(node.id);
 
       if (shouldFlattenThisNode) {
         walk(children);
@@ -694,21 +702,25 @@ export function App(props: AppProps): React.ReactElement {
     void processTurn(props.initialInput);
   }, [processTurn, props.initialInput]);
 
-  const weaveTreeLines = useMemo(
-    () => buildWeaveTreeLines(uiState.weaveDagNodes, expandedDagNodeIds),
-    [uiState.weaveDagNodes, expandedDagNodeIds]
-  );
-  const visibleDagNodeIds = useMemo(
-    () => buildVisibleDagNodeIds(uiState.weaveDagNodes),
-    [uiState.weaveDagNodes]
-  );
-  const runActive = busy || uiState.status === "thinking" || uiState.status === "using_tool";
   const activeDagNodeId = useMemo(() => {
     const current = [...uiState.weaveDagNodes]
       .filter((node) => node.status === "running" || node.status === "waiting")
       .sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0];
     return current?.id ?? "";
   }, [uiState.weaveDagNodes]);
+  const forceVisibleDagNodeIds = useMemo(
+    () => new Set(activeDagNodeId ? [activeDagNodeId] : []),
+    [activeDagNodeId]
+  );
+  const weaveTreeLines = useMemo(
+    () => buildWeaveTreeLines(uiState.weaveDagNodes, expandedDagNodeIds, forceVisibleDagNodeIds),
+    [uiState.weaveDagNodes, expandedDagNodeIds, forceVisibleDagNodeIds]
+  );
+  const visibleDagNodeIds = useMemo(
+    () => buildVisibleDagNodeIds(uiState.weaveDagNodes, forceVisibleDagNodeIds),
+    [uiState.weaveDagNodes, forceVisibleDagNodeIds]
+  );
+  const runActive = busy || uiState.status === "thinking" || uiState.status === "using_tool";
   const previousActiveDagNodeIdRef = useRef("");
 
   useEffect(() => {
