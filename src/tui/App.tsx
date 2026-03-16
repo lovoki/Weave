@@ -127,6 +127,20 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+function areSetsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+
+  for (const value of a) {
+    if (!b.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 interface TreeLine {
   id: string;
   parentId?: string;
@@ -394,6 +408,54 @@ function buildWeaveTreeLines(
   return lines;
 }
 
+function buildVisibleDagNodeIds(
+  nodes: Array<{
+    id: string;
+    parentId?: string;
+    label: string;
+  }>
+): string[] {
+  if (nodes.length === 0) {
+    return [];
+  }
+
+  const byParent = new Map<string, Array<{ id: string; parentId?: string; label: string }>>();
+  for (const node of nodes) {
+    const parent = node.parentId ?? "__root__";
+    const list = byParent.get(parent) ?? [];
+    list.push(node);
+    byParent.set(parent, list);
+  }
+
+  for (const [key, list] of byParent.entries()) {
+    list.sort((a, b) => compareNodeId(a.id, b.id));
+    byParent.set(key, list);
+  }
+
+  const visibleIds: string[] = [];
+
+  const walk = (list: Array<{ id: string; parentId?: string; label: string }>): void => {
+    for (const node of list) {
+      const children = byParent.get(node.id) ?? [];
+      const shouldFlattenThisNode =
+        !node.id.includes(".") && children.length > 0 && isLowSignalDecisionLabel(node.label);
+
+      if (shouldFlattenThisNode) {
+        walk(children);
+        continue;
+      }
+
+      visibleIds.push(node.id);
+      if (children.length > 0) {
+        walk(children);
+      }
+    }
+  };
+
+  walk(byParent.get("__root__") ?? []);
+  return visibleIds;
+}
+
 export function App(props: AppProps): React.ReactElement {
   const { exit } = useApp();
   const inputEnabled = Boolean(process.stdin.isTTY);
@@ -541,8 +603,8 @@ export function App(props: AppProps): React.ReactElement {
     [uiState.weaveDagNodes, expandedDagNodeIds]
   );
   const visibleDagNodeIds = useMemo(
-    () => weaveTreeLines.map((line) => line.id).sort(compareNodeId),
-    [weaveTreeLines]
+    () => buildVisibleDagNodeIds(uiState.weaveDagNodes).sort(compareNodeId),
+    [uiState.weaveDagNodes]
   );
   const runActive = busy || uiState.status === "thinking" || uiState.status === "using_tool";
 
@@ -569,11 +631,12 @@ export function App(props: AppProps): React.ReactElement {
 
     setExpandedDagNodeIds((prev) => {
       if (runActive) {
-        if (prev.size === 1 && prev.has(latestNodeId)) {
+        const target = new Set<string>([latestNodeId]);
+        if (areSetsEqual(prev, target)) {
           return prev;
         }
 
-        return new Set<string>([latestNodeId]);
+        return target;
       }
 
       if (prev.size === 0) {
@@ -587,11 +650,15 @@ export function App(props: AppProps): React.ReactElement {
         }
       }
 
-      if (next.size === 1 && next.has(latestNodeId)) {
+      if (next.size === 0) {
+        next.add(latestNodeId);
+      }
+
+      if (areSetsEqual(prev, next)) {
         return prev;
       }
 
-      return next.size > 0 ? next : new Set<string>([latestNodeId]);
+      return next;
     });
   }, [visibleDagNodeIds, runActive]);
 
