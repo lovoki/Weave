@@ -9,6 +9,38 @@
 
 ## 进度记录
 
+### 2026-03-16 - Entry 039 - 新增内置文件写入工具 write_file
+
+#### 范围
+新增符合 Agent 工具接入规范的文件写入工具，并接入默认内置工具注册。
+
+#### 改动
+- 新增工具实现：
+  - `src/tools/builtins/write-file-tool.ts`
+  - 工具名：`write_file`
+  - 支持参数：`filePath`、`content`、`mode(overwrite|append)`、`createDirs`
+  - 安全约束：限制写入目标必须位于工作区目录内
+  - 可用性：目录不存在时支持自动创建（默认开启）
+- 工具注册接入：
+  - `src/tools/builtins/index.ts` 增加 `writeFileTool`
+- 架构文档同步：
+  - `docs/project/architecture-and-files.md` 增加 write_file 说明
+
+#### 影响文件
+- src/tools/builtins/write-file-tool.ts
+- src/tools/builtins/index.ts
+- docs/project/architecture-and-files.md
+
+#### 验证
+- 构建通过：`corepack pnpm build`。
+- P0 回归通过：`corepack pnpm verify:p0`。
+
+#### 待解决问题
+- 目前写入工具为文本写入能力，尚未支持结构化 patch 写入与并发冲突检测。
+
+#### 下一步
+- 增加写入前摘要与差异预览能力，降低误写风险。
+
 ### 2026-03-16 - Entry 038 - TUI 事件分层优化：默认隐藏协议迁移节点
 
 #### 范围

@@ -186,6 +186,8 @@ dagent/
   - 内置命令行执行工具 `command_exec`。
 - `src/tools/builtins/read-file-tool.ts`
   - 内置文件读取工具 `read_file`（支持按行区间读取）。
+- `src/tools/builtins/write-file-tool.ts`
+  - 内置文件写入工具 `write_file`（支持覆盖/追加写入，带工作区路径约束）。
 - `src/tools/builtins/index.ts`
   - 导出内置工具集合，供入口统一注册。
 - `src/agent/plugins/agent-plugin.ts`

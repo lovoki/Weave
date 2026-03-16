@@ -1,5 +1,6 @@
 import { commandExecTool } from "./command-exec-tool.js";
 import { readFileTool } from "./read-file-tool.js";
+import { writeFileTool } from "./write-file-tool.js";
 import type { ToolDefinition } from "../tool-types.js";
 
 /**
@@ -7,5 +8,6 @@ import type { ToolDefinition } from "../tool-types.js";
  */
 export const builtinTools: Array<ToolDefinition<unknown>> = [
 	commandExecTool as ToolDefinition<unknown>,
-	readFileTool as ToolDefinition<unknown>
+	readFileTool as ToolDefinition<unknown>,
+	writeFileTool as ToolDefinition<unknown>
 ];
