@@ -1,0 +1,226 @@
+/*
+ * 文件作用：二维图页面基础样式 — Tailwind v4 + CSS token + 关键帧动画。
+ */
+
+@import "tailwindcss";
+
+:root {
+  --bg-app: #0b0b0b;
+  --bg-panel: #111111;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --text-main: #f3f4f6;
+  --text-soft: #9ca3af;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg-app);
+  color: var(--text-main);
+}
+
+/* ReactFlow Handle 隐藏 */
+.node-handle { opacity: 0; }
+
+/* ====== 画布面板 ====== */
+
+.canvas-panel {
+  grid-row: 2;
+  position: relative;
+  background: radial-gradient(circle at 40% 30%, rgba(255, 255, 255, 0.025), rgba(10, 10, 10, 0.97));
+}
+
+/* ====== Inspector Panel ====== */
+
+.inspector-panel {
+  height: 100%;
+  overflow: hidden;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  box-sizing: border-box;
+}
+
+.inspector-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.panel-title {
+  margin: 0 0 12px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d1d5db;
+}
+
+.inspector-group {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #1f2937;
+}
+
+.inspector-label {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+
+.inspector-value {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.inspector-code {
+  font-size: 11px;
+  font-family: "Consolas", "JetBrains Mono", monospace;
+  color: #cbd5e1;
+  word-break: break-all;
+}
+
+.inspector-empty {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  height: 200px;
+  color: #6b7280;
+  text-align: center;
+  gap: 8px;
+}
+
+.inspector-empty-icon {
+  font-size: 28px;
+  opacity: 0.5;
+}
+
+.inspector-code-block {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ====== 编排占位区 ====== */
+
+.orchestrate-section {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid #1f2937;
+  opacity: 0.45;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.orchestrate-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #d1d5db;
+  margin-bottom: 2px;
+}
+
+.orchestrate-btn {
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #9ca3af;
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: not-allowed;
+  font-family: inherit;
+}
+
+.orchestrate-hint {
+  font-size: 11px;
+  color: #4b5563;
+  margin: 0;
+  text-align: center;
+}
+
+/* ── @keyframes ────────────────────────────────────── */
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+@keyframes node-enter {
+  from { opacity: 0; transform: scale(0.92) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes node-aura {
+  0%, 100% { box-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 0 rgba(59,130,246,0); }
+  50%       { box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 16px 4px rgba(59,130,246,0.25); }
+}
+
+@keyframes approval-pulse {
+  0%   { box-shadow: 0 0 0 2px rgba(245,158,11,0.85), 0 4px 12px rgba(0,0,0,0.5); }
+  50%  { box-shadow: 0 0 0 7px rgba(245,158,11,0.2),  0 4px 20px rgba(245,158,11,0.3); }
+  100% { box-shadow: 0 0 0 2px rgba(245,158,11,0.85), 0 4px 12px rgba(0,0,0,0.5); }
+}
+
+/* ── 节点动画 ────────────────────────────────────────── */
+
+.semantic-node-card {
+  animation: node-enter 0.22s ease both;
+}
+
+.node-status-running .semantic-node-card,
+.node-status-retrying .semantic-node-card {
+  animation: node-aura 1.8s ease-in-out infinite;
+}
+
+.node-pending-approval {
+  animation: approval-pulse 1.6s ease-in-out infinite;
+  border-radius: 12px;
+}
+
+/* WS 状态点 */
+.ws-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.ws-dot-connected {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16,185,129,0.6);
+}
+
+.ws-dot-connecting {
+  background: #f59e0b;
+  animation: blink 1.2s ease-in-out infinite;
+}
+
+.ws-dot-disconnected {
+  background: #6b7280;
+}
+
+/* ReactFlow 边 glow（animated 时） */
+.react-flow__edge-path {
+  transition: stroke 0.2s;
+}
+
+/* 代码区域字体 */
+.font-jetbrains {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* 自定义滚动条 */
+.custom-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}

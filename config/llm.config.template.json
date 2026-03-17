@@ -1,0 +1,10 @@
+{
+  "provider": "qwen",
+  "model": "qwen-plus",
+  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "apiKey": "YOUR_QWEN_API_KEY",
+  "apiKeyEnv": "QWEN_API_KEY",
+  "temperature": 0.7,
+  "maxTokens": 1024,
+  "systemPrompt": "You are Dagent, a helpful AI assistant."
+}
