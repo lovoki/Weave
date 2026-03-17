@@ -1,15 +1,15 @@
 /*
- * 文件作用：二维图页面三栏布局与语义化节点样式。
+ * 文件作用：二维图页面基础样式 — Tailwind v4 + CSS token + 关键帧动画。
  */
 
+@import "tailwindcss";
+
 :root {
-  --bg-app: #0a0a0a;
-  --bg-panel: #0f0f10;
-  --bg-panel-soft: #131314;
+  --bg-app: #0b0b0b;
+  --bg-panel: #111111;
+  --border-subtle: rgba(255, 255, 255, 0.08);
   --text-main: #f3f4f6;
   --text-soft: #9ca3af;
-  --border-main: #1f2937;
-  --focus-blue: #3b82f6;
 }
 
 html,
@@ -19,242 +19,86 @@ body,
   height: 100%;
   margin: 0;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  background: radial-gradient(circle at 14% 14%, #171717 0%, #0a0a0a 60%);
+  background: var(--bg-app);
   color: var(--text-main);
 }
 
-.graph-shell {
-  width: 100vw;
-  height: 100vh;
-  display: grid;
-  grid-template-columns: 20% 55% 25%;
-  background: transparent;
+/* ReactFlow Handle 隐藏 */
+.node-handle { opacity: 0; }
+
+/* ── @keyframes ────────────────────────────────────── */
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
 }
 
-.timeline-panel,
-.inspector-panel {
-  background: linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-panel-soft) 100%);
-  border-color: var(--border-main);
-  overflow: auto;
-  padding: 14px;
+@keyframes node-enter {
+  from { opacity: 0; transform: scale(0.92) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-.timeline-panel {
-  border-right: 1px solid var(--border-main);
+@keyframes node-aura {
+  0%, 100% { box-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 0 rgba(59,130,246,0); }
+  50%       { box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 16px 4px rgba(59,130,246,0.25); }
 }
 
-.inspector-panel {
-  border-left: 1px solid var(--border-main);
+@keyframes approval-pulse {
+  0%   { box-shadow: 0 0 0 2px rgba(245,158,11,0.85), 0 4px 12px rgba(0,0,0,0.5); }
+  50%  { box-shadow: 0 0 0 7px rgba(245,158,11,0.2),  0 4px 20px rgba(245,158,11,0.3); }
+  100% { box-shadow: 0 0 0 2px rgba(245,158,11,0.85), 0 4px 12px rgba(0,0,0,0.5); }
 }
 
-.panel-title {
-  margin: 0 0 12px;
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #d1d5db;
+/* ── 节点动画 ────────────────────────────────────────── */
+
+.semantic-node-card {
+  animation: node-enter 0.22s ease both;
 }
 
-.timeline-item {
-  width: 100%;
-  text-align: left;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-main);
+.node-status-running .semantic-node-card,
+.node-status-retrying .semantic-node-card {
+  animation: node-aura 1.8s ease-in-out infinite;
+}
+
+.node-pending-approval {
+  animation: approval-pulse 1.6s ease-in-out infinite;
   border-radius: 12px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  cursor: pointer;
 }
 
-.timeline-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+/* WS 状态点 */
+.ws-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
-.timeline-item.active {
-  border-color: rgba(59, 130, 246, 0.4);
-  background: rgba(59, 130, 246, 0.12);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25) inset;
+.ws-dot-connected {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16,185,129,0.6);
 }
 
-.timeline-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.timeline-subtitle {
-  font-size: 11px;
-  color: var(--text-soft);
-  font-family: "Consolas", "JetBrains Mono", monospace;
-}
-
-.canvas-panel {
-  position: relative;
-  background: radial-gradient(circle at 40% 30%, rgba(255, 255, 255, 0.03), rgba(10, 10, 10, 0.97));
-}
-
-.inspector-group {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-main);
-}
-
-.inspector-label {
-  font-size: 11px;
-  color: var(--text-soft);
-  margin-bottom: 4px;
-}
-
-.inspector-value {
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.inspector-code {
-  font-size: 11px;
-  font-family: "Consolas", "JetBrains Mono", monospace;
-  color: #cbd5e1;
-  word-break: break-all;
-}
-
-.semantic-node {
-  width: 280px;
-  min-height: 96px;
-  border-left: 4px solid #3b82f6;
-  border-radius: 8px;
-  background: rgba(30, 30, 30, 0.8);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  padding: 16px;
-}
-
-.semantic-node-header {
-  display: grid;
-  grid-template-columns: 20px 1fr 12px;
-  align-items: center;
-  column-gap: 8px;
-}
-
-.semantic-node-icon {
-  font-size: 14px;
-  color: #c9dbff;
-}
-
-.semantic-node-title {
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.2;
-  color: #ffffff;
-}
-
-.semantic-node-subtitle {
-  margin-top: 8px;
-  font-size: 11px;
-  color: #9ca3af;
-  font-family: "Consolas", "JetBrains Mono", monospace;
-  word-break: break-word;
-}
-
-.semantic-node-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #64748b;
-  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.2);
-}
-
-.node-kind-llm {
-  border-left-color: #a855f7;
-}
-
-.node-kind-gate {
-  border-left-color: #f59e0b;
-}
-
-.node-kind-tool {
-  border-left-color: #3b82f6;
-}
-
-.node-kind-repair {
-  border-left-color: #ef4444;
-}
-
-.node-kind-final {
-  border-left-color: #10b981;
-}
-
-.node-kind-system {
-  border-left-color: #64748b;
-}
-
-.node-status-running .semantic-node-status-dot,
-.node-status-retrying .semantic-node-status-dot {
+.ws-dot-connecting {
   background: #f59e0b;
-  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
+  animation: blink 1.2s ease-in-out infinite;
 }
 
-.node-status-success .semantic-node-status-dot {
-  background: #22c55e;
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+.ws-dot-disconnected {
+  background: #6b7280;
 }
 
-.node-status-fail .semantic-node-status-dot {
-  background: #ef4444;
-  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+/* ReactFlow 边 glow（animated 时） */
+.react-flow__edge-path {
+  transition: stroke 0.2s;
 }
 
-.node-handle {
-  opacity: 0;
+/* 代码区域字体 */
+.font-jetbrains {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
 }
 
-.inspector-empty {
-  display: grid;
-  place-items: center;
-  height: calc(100vh - 120px);
-  color: #6b7280;
-  text-align: center;
-  gap: 8px;
-}
-
-.inspector-empty-icon {
-  font-size: 28px;
-  opacity: 0.5;
-}
-
-.inspector-code-block {
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.inspector-code-toolbar-wrap {
-  display: grid;
-  gap: 6px;
-}
-
-.inspector-toolbar {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.inspector-btn {
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.04);
-  color: #d1d5db;
-  border-radius: 6px;
-  font-size: 11px;
-  padding: 3px 8px;
-  cursor: pointer;
-}
-
-.inspector-btn.active {
-  border-color: rgba(59, 130, 246, 0.6);
-  background: rgba(59, 130, 246, 0.2);
-  color: #eff6ff;
-}
-
-.inspector-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+/* 自定义滚动条 */
+.custom-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
 }
