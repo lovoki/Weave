@@ -1,76 +1,52 @@
+import type OpenAI from "openai";
 import type {
   AgentLoopPlugin,
   AgentPluginOutput,
   AgentPluginOutputs,
   AgentPluginRunContext,
+  BeforeLlmRequestContext,
+  AfterLlmResponseContext,
   BeforeToolExecutionContext,
-  AfterToolExecutionContext
+  AfterToolExecutionContext,
+  RunCompletedContext,
+  RunErrorContext
 } from "../agent/plugins/agent-plugin.js";
-import { summarizeText } from "../utils/text-utils.js";
 import { formatToolIntent } from "./tool-formatters.js";
+import { LlmNode } from "../runtime/nodes/llm-node.js";
+import { ToolNode } from "../runtime/nodes/tool-node.js";
+import { AttemptNode } from "../runtime/nodes/attempt-node.js";
+import { RepairNode } from "../runtime/nodes/repair-node.js";
+import { FinalNode } from "../runtime/nodes/final-node.js";
+import { InputNode } from "../runtime/nodes/input-node.js";
+import { EscalationNode } from "../runtime/nodes/escalation-node.js";
+import type { BaseNode } from "../runtime/nodes/base-node.js";
+import type { BaseNodePayload } from "../runtime/nodes/node-types.js";
+import { safeClone } from "../runtime/nodes/safe-serialize.js";
 
 /**
  * 文件作用：以观察者模式监听 Agent 原生动作，实时输出动态 DAG 节点事件。
- * 采用 TurnDAGBuilder 管理节点状态，使用规范化节点 ID，支持完整节点类型：
- * InputNode / LlmNode / ToolNode / AttemptNode / RepairNode / EscalationNode / FinalNode。
+ * 使用 BaseNode 类体系管理节点状态，通过 toFullPayload() 生成统一 DTO，
+ * 发射 weave.dag.base_node 事件供 GraphProjector 直接解构。
  */
 
-// ─── 节点 / 边事件类型 ───
+// ─── 辅助函数 ───────────────────────────────────────────────────────────────
 
-type DagNodeKind =
-  | "input"
-  | "llm"
-  | "tool"
-  | "attempt"
-  | "repair"
-  | "escalation"
-  | "gate"
-  | "final"
-  | "system";
-
-type DagNodeStatus = "running" | "waiting" | "success" | "fail" | "skipped";
-
-interface DagNodeEvent {
-  nodeId: string;
-  parentId?: string;
-  kind: DagNodeKind;
-  label: string;
-  status: DagNodeStatus;
+function buildBaseNodeOutput(payload: BaseNodePayload): AgentPluginOutput {
+  return {
+    pluginName: "weave",
+    outputType: "weave.dag.base_node",
+    outputText: JSON.stringify(safeClone(payload))
+  };
 }
 
-interface DagDetailEvent {
-  nodeId: string;
-  text: string;
-}
-
-interface DagEdgeEvent {
+function buildDagEdge(event: {
   sourceId: string;
   targetId: string;
   fromPort?: string;
   toPort?: string;
-  edgeKind?: "dependency" | "data" | "retry" | "condition_true" | "condition_false";
+  edgeKind?: "dependency" | "data" | "retry";
   label?: string;
-}
-
-// ─── 构建函数 ───
-
-function buildDagOutput(event: DagNodeEvent): AgentPluginOutput {
-  return {
-    pluginName: "weave",
-    outputType: "weave.dag.node",
-    outputText: JSON.stringify(event)
-  };
-}
-
-function buildDagDetail(event: DagDetailEvent): AgentPluginOutput {
-  return {
-    pluginName: "weave",
-    outputType: "weave.dag.detail",
-    outputText: JSON.stringify(event)
-  };
-}
-
-function buildDagEdge(event: DagEdgeEvent): AgentPluginOutput {
+}): AgentPluginOutput {
   return {
     pluginName: "weave",
     outputType: "weave.dag.edge",
@@ -78,125 +54,103 @@ function buildDagEdge(event: DagEdgeEvent): AgentPluginOutput {
   };
 }
 
-// ─── TurnDAGBuilder ───
+// ─── TurnDAGBuilder ──────────────────────────────────────────────────────────
 
-/**
- * 负责管理单次对话轮次内的 DAG 节点构建。
- * 跟踪 LLM/工具的调用计数，生成规范化节点 ID，并维护节点间依赖关系。
- *
- * 规范化节点 ID 方案：
- *   input           ← 用户输入
- *   llm-1, llm-2    ← 第 N 轮 LLM 决策
- *   tool-1, tool-2  ← 第 N 个工具调用（全局唯一）
- *   tool-1:attempt-1, tool-1:attempt-2  ← 第 N 次执行尝试
- *   tool-1:repair-1                     ← 第 N 次修复（位于 attempt-N 和 attempt-(N+1) 之间）
- *   tool-1:escalation                   ← 重试耗尽升级节点
- *   final           ← 最终回答
- */
 class TurnDAGBuilder {
   private llmIndex = 0;
   private toolIndex = 0;
-  /** 当前 LLM 节点 ID */
   currentLlmId = "";
-  /** toolCallId → canonical toolNode ID */
   private toolIdByCallId = new Map<string, string>();
-  /** 上一轮完成的 tool 节点 ID（用于构建到下一 LLM 的数据流边） */
   private completedToolIds: string[] = [];
+  private readonly nodeRegistry = new Map<string, BaseNode>();
 
-  // ── InputNode ──
-
-  buildInputNode(userInput?: string): AgentPluginOutput[] {
-    const outputs: AgentPluginOutput[] = [
-      buildDagOutput({ nodeId: "input", kind: "input", label: "用户输入", status: "success" })
-    ];
-    if (userInput) {
-      outputs.push(buildDagDetail({ nodeId: "input", text: `input=${userInput.slice(0, 200)}` }));
-    }
-    return outputs;
+  private register<T extends BaseNode>(node: T): T {
+    this.nodeRegistry.set(node.id, node);
+    return node;
   }
 
-  // ── LlmNode ──
+  getNode(nodeId: string): BaseNode | undefined {
+    return this.nodeRegistry.get(nodeId);
+  }
 
-  buildBeforeLlm(): AgentPluginOutput[] {
+  // ── InputNode ──────────────────────────────────────────────────────────────
+
+  async buildInputNode(userInput?: string): Promise<AgentPluginOutput[]> {
+    const node = this.register(new InputNode("input", userInput));
+    return [buildBaseNodeOutput(await node.toFullPayload())];
+  }
+
+  // ── LlmNode ───────────────────────────────────────────────────────────────
+
+  async buildBeforeLlm(
+    step: number,
+    systemPrompt: string,
+    messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[]
+  ): Promise<AgentPluginOutput[]> {
     const outputs: AgentPluginOutput[] = [];
 
     this.llmIndex++;
     const llmId = `llm-${this.llmIndex}`;
+    const llmNode = this.register(new LlmNode(llmId, { step, systemPrompt, messages }));
+    llmNode.markRunning();
 
     // 从 InputNode 或上一轮工具结果连接到新 LLM
     if (this.llmIndex === 1) {
-      outputs.push(
-        buildDagEdge({
-          sourceId: "input",
-          targetId: llmId,
-          fromPort: "input.text",
-          toPort: "context",
-          edgeKind: "data"
-        })
-      );
+      outputs.push(buildDagEdge({
+        sourceId: "input",
+        targetId: llmId,
+        fromPort: "userQuery",
+        toPort: "context",
+        edgeKind: "data"
+      }));
     } else if (this.completedToolIds.length > 0) {
       for (const toolId of this.completedToolIds) {
-        outputs.push(
-          buildDagEdge({
-            sourceId: toolId,
-            targetId: llmId,
-            fromPort: "result",
-            toPort: "tool_result",
-            edgeKind: "data"
-          })
-        );
+        outputs.push(buildDagEdge({
+          sourceId: toolId,
+          targetId: llmId,
+          fromPort: "result",
+          toPort: "tool_result",
+          edgeKind: "data"
+        }));
       }
     } else if (this.currentLlmId) {
-      // 前一 LLM 没有工具调用，直接连接
-      outputs.push(
-        buildDagEdge({
-          sourceId: this.currentLlmId,
-          targetId: llmId,
-          edgeKind: "dependency"
-        })
-      );
+      outputs.push(buildDagEdge({
+        sourceId: this.currentLlmId,
+        targetId: llmId,
+        edgeKind: "dependency"
+      }));
     }
 
     this.completedToolIds = [];
     this.currentLlmId = llmId;
 
-    outputs.push(
-      buildDagOutput({ nodeId: llmId, kind: "llm", label: "大模型决策中...", status: "running" })
-    );
+    outputs.push(buildBaseNodeOutput(await llmNode.toFullPayload()));
     return outputs;
   }
 
-  buildAfterLlm(hasTools: boolean, toolCount: number): AgentPluginOutput[] {
+  async buildAfterLlm(
+    assistantMessage: OpenAI.Chat.Completions.ChatCompletionMessage
+  ): Promise<AgentPluginOutput[]> {
     if (!this.currentLlmId) return [];
 
+    const node = this.nodeRegistry.get(this.currentLlmId) as LlmNode | undefined;
+    if (!node) return [];
+
+    const hasTools = Boolean(assistantMessage.tool_calls?.length);
+    node.setResponse(assistantMessage.content, assistantMessage.tool_calls ?? undefined);
+
     if (hasTools) {
-      return [
-        buildDagOutput({
-          nodeId: this.currentLlmId,
-          kind: "llm",
-          label: "决策为调用工具",
-          status: "waiting"
-        }),
-        buildDagDetail({
-          nodeId: this.currentLlmId,
-          text: `plan=tool_calls x${toolCount}`
-        })
-      ];
+      node.status = "waiting";
+    } else {
+      node.markSuccess();
     }
 
-    return [
-      buildDagOutput({
-        nodeId: this.currentLlmId,
-        kind: "llm",
-        label: "大模型决策完成",
-        status: "success"
-      })
-    ];
+    return [buildBaseNodeOutput(await node.toFullPayload())];
   }
 
-  // ── ToolNode / AttemptNode / RepairNode / EscalationNode ──
+  // ── ToolNode / AttemptNode / RepairNode ────────────────────────────────────
 
-  buildBeforeTool(
+  async buildBeforeTool(
     toolCallId: string,
     toolName: string,
     args: unknown,
@@ -205,287 +159,207 @@ class TurnDAGBuilder {
     maxRetries: number,
     previousError: string | undefined,
     repairedFrom: Record<string, unknown> | undefined
-  ): AgentPluginOutput[] {
+  ): Promise<AgentPluginOutput[]> {
     const outputs: AgentPluginOutput[] = [];
+    const semantic = formatToolIntent(toolName, args);
+    const title = intentSummary || semantic.title;
 
     if (attempt === 1) {
-      // 首次执行：创建 ToolNode，直接在 ToolNode 上附加参数详情（不创建 attempt-1 子节点）
+      // 首次执行：创建 ToolNode
       this.toolIndex++;
       const toolId = `tool-${this.toolIndex}`;
       this.toolIdByCallId.set(toolCallId, toolId);
 
-      const semantic = formatToolIntent(toolName, args);
-      const title = intentSummary || semantic.title;
+      const toolNode = this.register(new ToolNode(
+        toolId,
+        {
+          toolName,
+          toolCallId,
+          args,
+          intentSummary: title,
+          toolGoal: semantic.details.join(" "),
+          maxRetries
+        },
+        this.currentLlmId || undefined
+      ));
+      toolNode.markRunning();
 
-      outputs.push(
-        buildDagOutput({
-          nodeId: toolId,
-          parentId: this.currentLlmId,
-          kind: "tool",
-          label: title,
-          status: "running"
-        })
-      );
-      // LLM → Tool 数据流边（parentId 已创建父子边，此为语义化数据流边）
-      outputs.push(
-        buildDagEdge({
+      // LLM → Tool 数据流边
+      if (this.currentLlmId) {
+        outputs.push(buildDagEdge({
           sourceId: this.currentLlmId,
           targetId: toolId,
-          fromPort: "tool_calls",
+          fromPort: "toolCalls",
           toPort: "trigger",
           edgeKind: "data"
-        })
-      );
-      // 将调用参数作为 detail 附加到 ToolNode
-      outputs.push(
-        buildDagDetail({
-          nodeId: toolId,
-          text: `args=${JSON.stringify(args).slice(0, 300)}`
-        })
-      );
-      if (semantic.details.length > 0) {
-        outputs.push(buildDagDetail({ nodeId: toolId, text: semantic.details.join("\n") }));
+        }));
       }
+
+      outputs.push(buildBaseNodeOutput(await toolNode.toFullPayload()));
     } else {
-      // 重试：创建 RepairNode（代表上次失败后的修复 LLM 调用）+ 新 AttemptNode
+      // 重试：创建 RepairNode + AttemptNode
       const toolId = this.toolIdByCallId.get(toolCallId);
       if (!toolId) return outputs;
 
-      // attempt=2 时上一个失败节点是 toolId 本身（首次无 attempt-1 子节点）
-      // attempt>2 时上一个失败节点是 tool-N:attempt-{attempt-1}
       const retrySourceId = attempt === 2 ? toolId : `${toolId}:attempt-${attempt - 1}`;
       const repairId = `${toolId}:repair-${attempt - 1}`;
       const attemptId = `${toolId}:attempt-${attempt}`;
 
-      // RepairNode：代表局部上下文 LLM 修复调用
-      outputs.push(
-        buildDagOutput({
-          nodeId: repairId,
-          parentId: toolId,
-          kind: "repair",
-          label: "参数修复",
-          status: "success"
-        })
-      );
-      if (previousError) {
-        outputs.push(
-          buildDagDetail({
-            nodeId: repairId,
-            text: `失败原因: ${previousError}`
-          })
-        );
-      }
-      if (repairedFrom) {
-        outputs.push(
-          buildDagDetail({
-            nodeId: repairId,
-            text: `修复前参数: ${JSON.stringify(repairedFrom).slice(0, 200)}`
-          })
-        );
-      }
-      // 重试链边：上次失败节点 → RepairNode → 新 AttemptNode
-      outputs.push(
-        buildDagEdge({ sourceId: retrySourceId, targetId: repairId, edgeKind: "retry" })
-      );
-      outputs.push(
-        buildDagEdge({ sourceId: repairId, targetId: attemptId, edgeKind: "retry" })
-      );
+      // RepairNode
+      const repairNode = this.register(new RepairNode(
+        repairId,
+        { lastError: previousError, originalArgs: repairedFrom },
+        toolId
+      ));
+      repairNode.status = "success";
+      repairNode.completedAt = new Date().toISOString();
 
-      outputs.push(
-        buildDagOutput({
-          nodeId: attemptId,
-          parentId: toolId,
-          kind: "attempt",
-          label: `第 ${attempt} 次执行`,
-          status: "running"
-        })
-      );
-      outputs.push(
-        buildDagDetail({
-          nodeId: attemptId,
-          text: `尝试 ${attempt}/${maxRetries + 1}`
-        })
-      );
+      outputs.push(buildDagEdge({ sourceId: retrySourceId, targetId: repairId, edgeKind: "retry" }));
+      outputs.push(buildBaseNodeOutput(await repairNode.toFullPayload()));
+
+      // AttemptNode
+      const attemptNode = this.register(new AttemptNode(
+        attemptId,
+        { attemptIndex: attempt, args },
+        toolId
+      ));
+      attemptNode.markRunning();
+
+      outputs.push(buildDagEdge({ sourceId: repairId, targetId: attemptId, edgeKind: "retry" }));
+      outputs.push(buildBaseNodeOutput(await attemptNode.toFullPayload()));
     }
 
     return outputs;
   }
 
-  buildAfterTool(
+  async buildAfterTool(
     toolCallId: string,
     toolName: string,
     result: { ok: boolean; content?: unknown },
     attempt: number,
     maxRetries: number,
     allFailed: boolean | undefined
-  ): AgentPluginOutput[] {
+  ): Promise<AgentPluginOutput[]> {
     const outputs: AgentPluginOutput[] = [];
     const toolId = this.toolIdByCallId.get(toolCallId);
     if (!toolId) return outputs;
 
-    const semantic = formatToolIntent(toolName);
+    const toolNode = this.nodeRegistry.get(toolId) as ToolNode | undefined;
+    const errMsg = typeof result.content === "string"
+      ? result.content
+      : (result.content ? JSON.stringify(result.content).slice(0, 200) : "执行失败");
 
     if (result.ok) {
       if (attempt === 1) {
-        // 首次直接成功：更新 ToolNode 状态，附加结果详情
-        outputs.push(
-          buildDagOutput({
-            nodeId: toolId,
-            parentId: this.currentLlmId,
-            kind: "tool",
-            label: semantic.title,
-            status: "success"
-          })
-        );
-        outputs.push(
-          buildDagDetail({
-            nodeId: toolId,
-            text: `result=${String(result.content ?? "").slice(0, 200)}`
-          })
-        );
+        if (toolNode) {
+          toolNode.setResult(true, result.content);
+          toolNode.markSuccess();
+          outputs.push(buildBaseNodeOutput(await toolNode.toFullPayload()));
+        }
       } else {
-        // 重试后成功：更新当前 attempt 节点和 ToolNode
         const attemptId = `${toolId}:attempt-${attempt}`;
-        outputs.push(
-          buildDagOutput({
-            nodeId: attemptId,
-            parentId: toolId,
-            kind: "attempt",
-            label: "执行成功",
-            status: "success"
-          })
-        );
-        outputs.push(
-          buildDagOutput({
-            nodeId: toolId,
-            parentId: this.currentLlmId,
-            kind: "tool",
-            label: semantic.title,
-            status: "success"
-          })
-        );
+        const attemptNode = this.nodeRegistry.get(attemptId) as AttemptNode | undefined;
+        if (attemptNode) {
+          attemptNode.setSuccess(result.content);
+          outputs.push(buildBaseNodeOutput(await attemptNode.toFullPayload()));
+        }
+        if (toolNode) {
+          toolNode.setResult(true, result.content);
+          toolNode.markSuccess();
+          outputs.push(buildBaseNodeOutput(await toolNode.toFullPayload()));
+        }
       }
       this.completedToolIds.push(toolId);
     } else if (allFailed) {
       if (attempt === 1) {
-        // 单次执行即失败（无重试）：直接标记 ToolNode 失败
-        outputs.push(
-          buildDagOutput({
-            nodeId: toolId,
-            parentId: this.currentLlmId,
-            kind: "tool",
-            label: semantic.title,
-            status: "fail"
-          })
-        );
+        if (toolNode) {
+          toolNode.setResult(false, result.content);
+          toolNode.markFailed({ name: "ToolError", message: errMsg });
+          outputs.push(buildBaseNodeOutput(await toolNode.toFullPayload()));
+        }
       } else {
-        // 重试耗尽：最后的 attempt 节点和 ToolNode 均失败
         const attemptId = `${toolId}:attempt-${attempt}`;
-        outputs.push(
-          buildDagOutput({
-            nodeId: attemptId,
-            parentId: toolId,
-            kind: "attempt",
-            label: "执行失败",
-            status: "fail"
-          })
-        );
-        outputs.push(
-          buildDagOutput({
-            nodeId: toolId,
-            parentId: this.currentLlmId,
-            kind: "tool",
-            label: semantic.title,
-            status: "fail"
-          })
-        );
+        const attemptNode = this.nodeRegistry.get(attemptId) as AttemptNode | undefined;
+        if (attemptNode) {
+          attemptNode.setFailed(errMsg);
+          outputs.push(buildBaseNodeOutput(await attemptNode.toFullPayload()));
+        }
+        if (toolNode) {
+          toolNode.setResult(false, result.content);
+          toolNode.markFailed({ name: "ToolError", message: errMsg });
+          outputs.push(buildBaseNodeOutput(await toolNode.toFullPayload()));
+        }
       }
-      // 有配置重试时创建 EscalationNode
+
+      // EscalationNode
       if (maxRetries > 0) {
         const escalationId = `${toolId}:escalation`;
-        // escalation 挂在最后失败的节点下（attempt=1 时为 toolId 本身）
         const escalationSourceId = attempt === 1 ? toolId : `${toolId}:attempt-${attempt}`;
-        outputs.push(
-          buildDagOutput({
-            nodeId: escalationId,
-            parentId: toolId,
-            kind: "escalation",
-            label: "重试耗尽，升级主循环",
-            status: "fail"
-          })
-        );
-        outputs.push(
-          buildDagEdge({ sourceId: escalationSourceId, targetId: escalationId, edgeKind: "dependency" })
-        );
+        const escNode = this.register(new EscalationNode(escalationId, toolName, toolId));
+        escNode.error = { name: "EscalationError", message: `${toolName} 重试耗尽` };
+        outputs.push(buildDagEdge({ sourceId: escalationSourceId, targetId: escalationId, edgeKind: "dependency" }));
+        outputs.push(buildBaseNodeOutput(await escNode.toFullPayload()));
       }
+
       this.completedToolIds.push(toolId);
     } else {
       // 本次失败但还会重试
-      if (attempt === 1) {
-        // attempt=1 时 ToolNode 本身保持 running，等待 repair+retry，不更新状态
-      } else {
+      if (attempt > 1) {
         const attemptId = `${toolId}:attempt-${attempt}`;
-        outputs.push(
-          buildDagOutput({
-            nodeId: attemptId,
-            parentId: toolId,
-            kind: "attempt",
-            label: `第 ${attempt} 次失败`,
-            status: "fail"
-          })
-        );
+        const attemptNode = this.nodeRegistry.get(attemptId) as AttemptNode | undefined;
+        if (attemptNode) {
+          attemptNode.setFailed(errMsg);
+          outputs.push(buildBaseNodeOutput(await attemptNode.toFullPayload()));
+        }
       }
     }
 
     return outputs;
   }
 
-  // ── FinalNode ──
+  // ── FinalNode ──────────────────────────────────────────────────────────────
 
-  buildFinalNode(finalText: string): AgentPluginOutput[] {
+  async buildFinalNode(finalText: string): Promise<AgentPluginOutput[]> {
     const outputs: AgentPluginOutput[] = [];
-    const finalId = "final";
+    const node = this.register(new FinalNode("final", finalText));
 
-    outputs.push(
-      buildDagOutput({ nodeId: finalId, kind: "final", label: "本轮完成", status: "success" })
-    );
-    if (finalText) {
-      outputs.push(buildDagDetail({ nodeId: finalId, text: summarizeText(finalText) }));
-    }
+    outputs.push(buildBaseNodeOutput(await node.toFullPayload()));
+
     if (this.currentLlmId) {
-      outputs.push(
-        buildDagEdge({
-          sourceId: this.currentLlmId,
-          targetId: finalId,
-          fromPort: "response_text",
-          toPort: "response",
-          edgeKind: "data"
-        })
-      );
+      outputs.push(buildDagEdge({
+        sourceId: this.currentLlmId,
+        targetId: "final",
+        fromPort: "responseText",
+        toPort: "response",
+        edgeKind: "data"
+      }));
     }
+
     return outputs;
   }
 }
 
-// ─── WeaveRunState ───
+// ─── WeaveRunState ───────────────────────────────────────────────────────────
 
 interface WeaveRunState {
   builder: TurnDAGBuilder;
 }
 
-// ─── WeavePlugin ───
+// ─── WeavePlugin ─────────────────────────────────────────────────────────────
 
 export class WeavePlugin implements AgentLoopPlugin {
   name = "weave";
   private readonly runStates = new Map<string, WeaveRunState>();
 
-  onRunStart(context: AgentPluginRunContext): AgentPluginOutputs {
+  async onRunStart(context: AgentPluginRunContext): Promise<AgentPluginOutputs> {
     const builder = new TurnDAGBuilder();
     this.runStates.set(context.runId, { builder });
     return builder.buildInputNode(context.userInput);
   }
 
-  beforeLlmRequest(context: { runId: string }): { output: AgentPluginOutput | AgentPluginOutput[] } | void {
+  async beforeLlmRequest(
+    context: BeforeLlmRequestContext
+  ): Promise<{ systemPrompt?: string; output?: AgentPluginOutput | AgentPluginOutput[] } | void> {
     const state = this.runStates.get(context.runId);
     if (!state) return;
 
@@ -493,34 +367,32 @@ export class WeavePlugin implements AgentLoopPlugin {
 
     // 若有前一个 LLM 节点（status=waiting），标记为完成
     if (state.builder.currentLlmId) {
-      outputs.push(
-        buildDagOutput({
-          nodeId: state.builder.currentLlmId,
-          kind: "llm",
-          label: "大模型决策完成，进入下一轮",
-          status: "success"
-        })
-      );
+      const prevNode = state.builder.getNode(state.builder.currentLlmId) as LlmNode | undefined;
+      if (prevNode && prevNode.status === "waiting") {
+        prevNode.status = "success";
+        prevNode.completedAt = new Date().toISOString();
+        outputs.push(buildBaseNodeOutput(await prevNode.toFullPayload()));
+      }
     }
 
     // 构建新 LLM 节点及前驱边
-    outputs.push(...state.builder.buildBeforeLlm());
+    outputs.push(...await state.builder.buildBeforeLlm(
+      context.step,
+      context.systemPrompt,
+      context.messages
+    ));
 
     return { output: outputs };
   }
 
-  afterLlmResponse(context: {
-    runId: string;
-    assistantMessage: { tool_calls?: Array<unknown>; content?: unknown };
-  }): AgentPluginOutputs {
+  async afterLlmResponse(context: AfterLlmResponseContext): Promise<AgentPluginOutputs> {
     const state = this.runStates.get(context.runId);
     if (!state) return;
 
-    const hasTools = Boolean(context.assistantMessage.tool_calls?.length);
-    return state.builder.buildAfterLlm(hasTools, context.assistantMessage.tool_calls?.length ?? 0);
+    return state.builder.buildAfterLlm(context.assistantMessage);
   }
 
-  beforeToolExecution(context: BeforeToolExecutionContext): AgentPluginOutputs {
+  async beforeToolExecution(context: BeforeToolExecutionContext): Promise<AgentPluginOutputs> {
     const state = this.runStates.get(context.runId);
     if (!state) return;
 
@@ -536,7 +408,7 @@ export class WeavePlugin implements AgentLoopPlugin {
     );
   }
 
-  afterToolExecution(context: AfterToolExecutionContext): AgentPluginOutputs {
+  async afterToolExecution(context: AfterToolExecutionContext): Promise<AgentPluginOutputs> {
     const state = this.runStates.get(context.runId);
     if (!state) return;
 
@@ -550,51 +422,53 @@ export class WeavePlugin implements AgentLoopPlugin {
     );
   }
 
-  onRunCompleted(context: { runId: string; finalText: string }): AgentPluginOutputs {
+  async onRunCompleted(context: RunCompletedContext): Promise<AgentPluginOutputs> {
     const state = this.runStates.get(context.runId);
     if (!state) return;
 
     const outputs: AgentPluginOutput[] = [];
-    const currentNode = state.builder.currentLlmId;
+    const currentLlmId = state.builder.currentLlmId;
     this.runStates.delete(context.runId);
 
-    if (currentNode) {
-      // 最后一轮 LLM 标记为完成（覆盖 "大模型决策完成，进入下一轮" 的情况）
-      outputs.push(
-        buildDagOutput({
-          nodeId: currentNode,
-          kind: "llm",
-          label: "本轮完成",
-          status: "success"
-        })
-      );
+    // 最后一轮 LLM 标记为完成
+    if (currentLlmId) {
+      const llmNode = state.builder.getNode(currentLlmId) as LlmNode | undefined;
+      if (llmNode && llmNode.status !== "success") {
+        llmNode.status = "success";
+        llmNode.completedAt = new Date().toISOString();
+        outputs.push(buildBaseNodeOutput(await llmNode.toFullPayload()));
+      }
     }
 
-    // FinalNode 及其连接边
-    outputs.push(...state.builder.buildFinalNode(context.finalText));
+    // FinalNode + 连接边
+    outputs.push(...await state.builder.buildFinalNode(context.finalText));
 
     return outputs;
   }
 
-  onRunError(context: { runId: string; errorMessage: string }): AgentPluginOutput | void {
+  async onRunError(context: RunErrorContext): Promise<AgentPluginOutputs> {
     const state = this.runStates.get(context.runId);
     this.runStates.delete(context.runId);
 
-    const currentNode = state?.builder.currentLlmId;
-    if (!currentNode) {
-      return buildDagOutput({
-        nodeId: "error",
-        kind: "tool",
-        label: `运行失败: ${context.errorMessage}`,
-        status: "fail"
-      });
+    const currentLlmId = state?.builder.currentLlmId;
+
+    if (currentLlmId) {
+      const llmNode = state?.builder.getNode(currentLlmId) as LlmNode | undefined;
+      if (llmNode) {
+        llmNode.markFailed({ name: "RunError", message: context.errorMessage });
+        const payload = await llmNode.toFullPayload();
+        return [buildBaseNodeOutput(payload)];
+      }
     }
 
-    return buildDagOutput({
-      nodeId: currentNode,
-      kind: "llm",
-      label: context.errorMessage,
-      status: "fail"
-    });
+    // 无 LLM 节点时：返回一个系统错误节点
+    const errPayload: BaseNodePayload = {
+      nodeId: "error",
+      kind: "system",
+      title: `运行失败: ${context.errorMessage}`,
+      status: "fail",
+      error: { name: "RunError", message: context.errorMessage }
+    };
+    return [buildBaseNodeOutput(errPayload)];
   }
 }

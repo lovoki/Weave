@@ -17,9 +17,9 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import "./app.css";
-import { useGraphStore } from "./store/graph-store";
+import { useGraphStore, portContentToString } from "./store/graph-store";
 import { applyDagreLayoutAsync } from "./layout/dagre-layout";
-import type { GateActionMessage, GraphEnvelope, GraphNodeData } from "./types/graph-events";
+import type { GateActionMessage, GraphEnvelope, GraphNodeData, GraphPort } from "./types/graph-events";
 import { SemanticNode } from "./nodes/semantic-node";
 import { FlowEdge } from "./edges/FlowEdge";
 import { ApprovalPanel } from "./components/ApprovalPanel";
@@ -30,8 +30,44 @@ import { InspectorTextBlock } from "./components/InspectorTextBlock";
 const nodeTypes = { semantic: SemanticNode };
 const edgeTypes = { flow: FlowEdge };
 
-function renderPortSummary(summary: string) {
-  return <InspectorTextBlock text={summary} />;
+function renderPort(port: GraphPort) {
+  if (port.blobRef) {
+    return <BlobPortBlock blobRef={port.blobRef} portName={port.name} />;
+  }
+  const text = portContentToString(port.content);
+  return <InspectorTextBlock text={text} />;
+}
+
+/** 懒加载 Blob 端口内容 */
+function BlobPortBlock({ blobRef, portName }: { blobRef: string; portName: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = () => {
+    if (loading || content !== null) return;
+    setLoading(true);
+    const params = new URLSearchParams(window.location.search);
+    const port = params.get("port") ?? "8787";
+    fetch(`http://127.0.0.1:${port}/api/blob/${blobRef}`)
+      .then((r) => r.text())
+      .then((text) => { setContent(text); setLoading(false); })
+      .catch(() => { setContent("[加载失败]"); setLoading(false); });
+  };
+
+  if (content !== null) {
+    return <InspectorTextBlock text={content} />;
+  }
+
+  return (
+    <button
+      className="inspector-btn"
+      style={{ marginTop: 4 }}
+      onClick={load}
+      disabled={loading}
+    >
+      {loading ? "加载中..." : `大文本已折叠 · 点击展开 (${portName})`}
+    </button>
+  );
 }
 
 // ── 内层组件（在 ReactFlowProvider 内，可使用 useReactFlow）──────────────────
@@ -239,8 +275,22 @@ function GraphCanvas() {
       );
     }
 
+    const { error, metrics } = selectedNode.data;
+    const hasMetrics = metrics && Object.keys(metrics).some((k) => metrics[k] !== undefined);
+
     return (
       <div>
+        {/* 错误区域 */}
+        {error && (
+          <div className="inspector-group" style={{ borderLeft: "3px solid #ef4444", paddingLeft: 8 }}>
+            <div className="inspector-label" style={{ color: "#ef4444" }}>错误</div>
+            <div className="inspector-value" style={{ color: "#ef4444", fontWeight: 600 }}>
+              {error.name}: {error.message}
+            </div>
+            {error.stack && <InspectorTextBlock text={error.stack} />}
+          </div>
+        )}
+
         <div className="inspector-group">
           <div className="inspector-label">节点</div>
           <div className="inspector-value">{selectedNode.data.title}</div>
@@ -254,6 +304,21 @@ function GraphCanvas() {
           </div>
         </div>
 
+        {/* 指标区域 */}
+        {hasMetrics && (
+          <div className="inspector-group">
+            <div className="inspector-label">指标</div>
+            {metrics?.durationMs !== undefined && (
+              <div className="inspector-value">⏱ {metrics.durationMs}ms</div>
+            )}
+            {(metrics?.promptTokens !== undefined || metrics?.completionTokens !== undefined) && (
+              <div className="inspector-value">
+                🪙 prompt: {metrics?.promptTokens ?? "?"} · completion: {metrics?.completionTokens ?? "?"}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="inspector-group">
           <div className="inspector-label">输入端口</div>
           {(selectedNode.data.inputPorts ?? []).length === 0 ? (
@@ -261,8 +326,8 @@ function GraphCanvas() {
           ) : (
             (selectedNode.data.inputPorts ?? []).map((port) => (
               <div key={`in-${port.name}`} className="inspector-value" style={{ marginBottom: 8 }}>
-                <div style={{ fontWeight: 600 }}>{port.name}</div>
-                {renderPortSummary(port.summary)}
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{port.name}</div>
+                {renderPort(port)}
               </div>
             ))
           )}
@@ -275,12 +340,22 @@ function GraphCanvas() {
           ) : (
             (selectedNode.data.outputPorts ?? []).map((port) => (
               <div key={`out-${port.name}`} className="inspector-value" style={{ marginBottom: 8 }}>
-                <div style={{ fontWeight: 600 }}>{port.name}</div>
-                {renderPortSummary(port.summary)}
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{port.name}</div>
+                {renderPort(port)}
               </div>
             ))
           )}
         </div>
+
+        {/* 依赖区域 */}
+        {(selectedNode.data.dependencies ?? []).length > 0 && (
+          <div className="inspector-group">
+            <div className="inspector-label">依赖</div>
+            {(selectedNode.data.dependencies ?? []).map((depId) => (
+              <div key={depId} className="inspector-code" style={{ marginBottom: 2 }}>{depId}</div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }, [selectedNode, handleApprovalAction]);

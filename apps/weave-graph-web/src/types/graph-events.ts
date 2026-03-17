@@ -6,6 +6,11 @@ export {
   type GraphEventType,
   type GraphEnvelope,
   type GraphPort,
+  type NodeKind,
+  type NodeStatus,
+  type NodeMetrics,
+  type NodeError,
+  type BaseNodePayload,
   type RunStartPayload,
   type NodeUpsertPayload,
   type EdgeUpsertPayload,
@@ -13,5 +18,8 @@ export {
   type NodeIoPayload,
   type LayoutHintPayload,
   type RunEndPayload,
-  type GraphNodeData
+  type GraphNodeData,
+  type NodePendingApprovalPayload,
+  type NodeApprovalResolvedPayload,
+  type GateActionMessage
 } from "../../../shared/graph-protocol.js";

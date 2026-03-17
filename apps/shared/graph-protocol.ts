@@ -12,7 +12,9 @@ export type GraphEventType =
   | "node.status"
   | "node.io"
   | "layout.hint"
-  | "run.end";
+  | "run.end"
+  | "node.pending_approval"
+  | "node.approval.resolved";
 
 export interface GraphEnvelope<TPayload = unknown> {
   schemaVersion: typeof GRAPH_SCHEMA_VERSION;
@@ -24,12 +26,108 @@ export interface GraphEnvelope<TPayload = unknown> {
   payload: TPayload;
 }
 
+// ─── 统一节点 Kind / Status 枚举 ────────────────────────────────────────────
+
+export type NodeKind =
+  | "input"
+  | "llm"
+  | "tool"
+  | "attempt"
+  | "repair"
+  | "escalation"
+  | "gate"
+  | "final"
+  | "system"
+  | "condition";
+
+export type NodeStatus =
+  | "pending"
+  | "ready"
+  | "blocked"
+  | "running"
+  | "waiting"
+  | "retrying"
+  | "success"
+  | "fail"
+  | "skipped"
+  | "aborted";
+
+// ─── 观测与错误类型 ──────────────────────────────────────────────────────────
+
+export interface NodeMetrics {
+  durationMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  [key: string]: unknown;
+}
+
+export interface NodeError {
+  name: string;
+  message: string;
+  stack?: string;
+}
+
+// ─── GraphPort（支持原生 content + blobRef 大数据引用） ──────────────────────
+
 export interface GraphPort {
   name: string;
-  type: string;
-  summary: string;
+  type: "text" | "json" | "messages" | "number";
+  /**
+   * 原生内容（直接传 Object/Array，无双重序列化）。
+   * 超过 50KB 时为 null，由 blobRef 替代。
+   */
+  content: unknown;
   blobRef?: string;
 }
+
+// ─── BaseNodePayload（权威前后端 DTO） ───────────────────────────────────────
+
+export interface BaseNodePayload {
+  nodeId: string;
+  kind: NodeKind;
+  title: string;
+  parentId?: string;
+  /** DAG 执行依赖，前端据此连线 */
+  dependencies?: string[];
+  status: NodeStatus;
+  tags?: string[];
+  startedAt?: string;
+  completedAt?: string;
+  /** status=fail 时前端红色高亮 */
+  error?: NodeError;
+  metrics?: NodeMetrics;
+  inputPorts?: GraphPort[];
+  outputPorts?: GraphPort[];
+  [key: string]: unknown;
+}
+
+// ─── 各节点子类型（特有字段） ─────────────────────────────────────────────────
+
+export interface LlmNodePayload extends BaseNodePayload {
+  kind: "llm";
+  step: number;
+}
+
+export interface ToolNodePayload extends BaseNodePayload {
+  kind: "tool";
+  toolName: string;
+  intentSummary: string;
+  toolGoal: string;
+  maxRetries: number;
+  currentAttempt: number;
+}
+
+export interface AttemptNodePayload extends BaseNodePayload {
+  kind: "attempt";
+  attemptIndex: number;
+}
+
+export interface FinalNodePayload extends BaseNodePayload {
+  kind: "final";
+  text?: string;
+}
+
+// ─── 图协议事件 Payload ──────────────────────────────────────────────────────
 
 export interface RunStartPayload {
   dagId: string;
@@ -41,21 +139,34 @@ export interface RunStartPayload {
 export interface NodeUpsertPayload {
   nodeId: string;
   parentId?: string;
-  kind: "llm" | "tool" | "gate" | "repair" | "final" | "system";
+  kind: NodeKind;
   title: string;
   tags?: string[];
+  dependencies?: string[];
 }
 
 export interface EdgeUpsertPayload {
   edgeId: string;
   source: string;
   target: string;
+  /** 来源节点输出端口名 */
+  fromPort?: string;
+  /** 目标节点输入端口名 */
+  toPort?: string;
+  /**
+   * 边类型语义：
+   * - dependency: 顺序依赖（默认）
+   * - data: 数据流（fromPort → toPort）
+   * - retry: 重试链（Attempt → Repair → Attempt）
+   * - condition_true / condition_false: 条件分支（预留）
+   */
+  edgeKind?: "dependency" | "data" | "retry" | "condition_true" | "condition_false";
   label?: string;
 }
 
 export interface NodeStatusPayload {
   nodeId: string;
-  status: "pending" | "running" | "retrying" | "success" | "fail" | "skipped";
+  status: NodeStatus;
   reason?: string;
 }
 
@@ -63,6 +174,8 @@ export interface NodeIoPayload {
   nodeId: string;
   inputPorts?: GraphPort[];
   outputPorts?: GraphPort[];
+  error?: NodeError;
+  metrics?: NodeMetrics;
 }
 
 export interface LayoutHintPayload {
@@ -76,12 +189,38 @@ export interface RunEndPayload {
   finalSummary?: string;
 }
 
+export interface NodePendingApprovalPayload {
+  nodeId: string;
+  toolName: string;
+  toolParams: string;
+}
+
+export interface NodeApprovalResolvedPayload {
+  nodeId: string;
+  action: "approve" | "edit" | "skip" | "abort";
+}
+
+/** 前端向服务器发送的审批操作消息 */
+export interface GateActionMessage {
+  type: "gate.action";
+  gateId: string;
+  action: "approve" | "edit" | "skip" | "abort";
+  params?: string;
+}
+
 /** 前端节点数据（ReactFlow 节点使用） */
 export interface GraphNodeData {
   title: string;
-  kind: string;
-  status?: string;
+  kind: NodeKind | string;
+  status?: NodeStatus | string;
   subtitle?: string;
   inputPorts?: GraphPort[];
   outputPorts?: GraphPort[];
+  error?: NodeError;
+  metrics?: NodeMetrics;
+  dependencies?: string[];
+  startedAt?: string;
+  completedAt?: string;
+  pendingApproval?: boolean;
+  approvalPayload?: { toolName: string; toolParams: string };
 }

@@ -38,7 +38,18 @@ function getStatusDot(status?: string): { color: string; pulse: boolean } {
   return { color: "#64748b", pulse: false };
 }
 
-function parseFooter(subtitle?: string): { ms?: string; tokens?: string } {
+function parseFooter(data: GraphNodeData): { ms?: string; tokens?: string } {
+  // 优先从 metrics 读取
+  if (data.metrics?.durationMs !== undefined) {
+    const ms = `${data.metrics.durationMs}ms`;
+    const tokens =
+      data.metrics.promptTokens !== undefined
+        ? `${data.metrics.promptTokens}+${data.metrics.completionTokens ?? 0} tokens`
+        : undefined;
+    return { ms, tokens };
+  }
+  // 降级：从副标题文本解析（旧格式兼容）
+  const subtitle = data.subtitle ?? "";
   if (!subtitle) return {};
   const parts = subtitle.split(/[·•|]/);
   const ms = parts.find((p) => p.includes("ms"))?.trim();
@@ -56,7 +67,7 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
   const { icon, color } = KIND_MAP[kind] ?? DEFAULT_KIND;
   const dot = getStatusDot(status);
   const isPendingApproval = data.pendingApproval === true;
-  const footer = parseFooter(data.subtitle);
+  const footer = parseFooter(data);
 
   const subtitleText = isPendingApproval
     ? `等待放行 · ${data.approvalPayload?.toolName ?? "工具调用"}`

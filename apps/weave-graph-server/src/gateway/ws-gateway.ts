@@ -1,13 +1,21 @@
 /*
- * 文件作用：提供本地 WS 网关，按会话 token 广播图协议事件。
+ * 文件作用：提供本地 WS 网关，按会话 token 广播图协议事件，并支持前端发送 gate.action 审批消息。
  */
 
 import { createServer, type Server as HttpServer } from "node:http";
 import { randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GraphEnvelope } from "../protocol/graph-events.js";
 import type { RuntimeRawEvent } from "../projection/graph-projector.js";
+
+export interface GateDecision {
+  action: "approve" | "edit" | "skip" | "abort";
+  params?: string;
+}
 
 export interface GraphGateway {
   port: number;
@@ -15,6 +23,8 @@ export interface GraphGateway {
   ingestUrl: string;
   publish(event: GraphEnvelope<unknown>): void;
   registerRuntimeIngestHandler(handler: (event: RuntimeRawEvent) => void): void;
+  getGateDecision(gateId: string): GateDecision | undefined;
+  clearGateDecision(gateId: string): void;
   close(): Promise<void>;
   httpServer: HttpServer;
 }
@@ -28,6 +38,8 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
 
   const token = randomBytes(16).toString("hex");
   let runtimeIngestHandler: ((event: RuntimeRawEvent) => void) | null = null;
+  // 存储来自 Web 前端的 gate 审批决策，key=gateId（即 toolCallId）
+  const pendingGateDecisions = new Map<string, GateDecision>();
 
   app.post("/ingest/runtime-event", (req, res) => {
     const incomingToken = req.headers["x-graph-token"];
@@ -44,6 +56,57 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
     runtimeIngestHandler(req.body as RuntimeRawEvent);
     console.log(`[graph-server] ingest accepted type=${String((req.body as RuntimeRawEvent)?.type ?? "unknown")}`);
     res.status(202).json({ ok: true });
+  });
+
+  // CLI 轮询端点：获取 Web 前端已做的 gate 审批决策
+  app.get("/api/gate/decision/:gateId", (req, res) => {
+    const incomingToken = req.headers["x-graph-token"];
+    if (incomingToken !== token) {
+      res.status(401).json({ ok: false, error: "unauthorized" });
+      return;
+    }
+
+    const gateId = req.params["gateId"] ?? "";
+    const decision = pendingGateDecisions.get(gateId);
+    if (!decision) {
+      res.status(204).end();
+      return;
+    }
+
+    console.log(`[graph-server] gate decision picked up gateId=${gateId} action=${decision.action}`);
+    res.status(200).json(decision);
+  });
+
+  // Blob 按需拉取端点（供前端 Inspector 大内容懒加载）
+  app.get("/api/blob/:blobRef", (req, res) => {
+    const blobRef = req.params["blobRef"] ?? "";
+    if (!blobRef || !/^[0-9a-f]{32}$/.test(blobRef)) {
+      res.status(400).json({ ok: false, error: "invalid-blob-ref" });
+      return;
+    }
+
+    const filePath = join(tmpdir(), "dagent-blobs", `${blobRef}.json`);
+    readFile(filePath, "utf-8")
+      .then((data) => {
+        res.setHeader("Content-Type", "application/json");
+        res.status(200).send(data);
+      })
+      .catch(() => {
+        res.status(404).json({ ok: false, error: "blob-not-found" });
+      });
+  });
+
+  // CLI 清除已消费的 gate 决策
+  app.delete("/api/gate/decision/:gateId", (req, res) => {
+    const incomingToken = req.headers["x-graph-token"];
+    if (incomingToken !== token) {
+      res.status(401).json({ ok: false, error: "unauthorized" });
+      return;
+    }
+
+    const gateId = req.params["gateId"] ?? "";
+    pendingGateDecisions.delete(gateId);
+    res.status(204).end();
   });
 
   const httpServer = createServer(app);
@@ -84,6 +147,23 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
       }
     }, 10_000);
 
+    // 接收来自前端的消息（主要是 gate.action 审批操作）
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(String(raw)) as { type?: string; gateId?: string; action?: string; params?: string };
+        if (msg.type === "gate.action" && msg.gateId && msg.action) {
+          const decision: GateDecision = {
+            action: msg.action as GateDecision["action"],
+            params: msg.params
+          };
+          pendingGateDecisions.set(msg.gateId, decision);
+          console.log(`[graph-server] gate.action received gateId=${msg.gateId} action=${msg.action}`);
+        }
+      } catch {
+        // 忽略非 JSON 消息
+      }
+    });
+
     ws.on("close", () => {
       clearInterval(pingTimer);
       clients.delete(ws);
@@ -113,6 +193,12 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
     },
     registerRuntimeIngestHandler(handler) {
       runtimeIngestHandler = handler;
+    },
+    getGateDecision(gateId) {
+      return pendingGateDecisions.get(gateId);
+    },
+    clearGateDecision(gateId) {
+      pendingGateDecisions.delete(gateId);
     },
     async close() {
       await new Promise<void>((resolve) => {

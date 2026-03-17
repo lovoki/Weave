@@ -1,5 +1,7 @@
 /*
  * 文件作用：将 Runtime 原始事件归一化为图协议事件（node/edge/status/io）。
+ * 优先处理 weave.dag.base_node 事件（包含完整 BaseNodePayload），
+ * 兼容旧版 weave.dag.node / weave.dag.edge / weave.dag.detail 事件。
  */
 
 import type {
@@ -11,7 +13,9 @@ import type {
   NodeStatusPayload,
   NodeUpsertPayload,
   RunEndPayload,
-  RunStartPayload
+  RunStartPayload,
+  BaseNodePayload,
+  NodeKind
 } from "../protocol/graph-events.js";
 import { GRAPH_SCHEMA_VERSION } from "../protocol/graph-events.js";
 
@@ -54,19 +58,79 @@ export class GraphProjector {
         ok: event.type === "run.completed",
         finalSummary: this.stringValue(event.payload?.finalText) || this.stringValue(event.payload?.errorMessage)
       }));
-      // run 结束后保留短暂上下文，吸收可能晚到的 plugin.output，避免拆分为第二个 runId DAG。
       this.completedAtByRun.set(event.runId, Date.now());
     }
 
+    // ── 新版：weave.dag.base_node — 直接包含完整 BaseNodePayload ────────────
+    if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.base_node") {
+      const parsed = this.safeJson(this.stringValue(event.payload?.outputText));
+      if (parsed?.nodeId) {
+        const bp = parsed as unknown as BaseNodePayload;
+        const nodeId = String(bp.nodeId);
+        const kind = (bp.kind ?? "tool") as NodeKind;
+        const title = String(bp.title ?? "");
+
+        // node.upsert
+        out.push(this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
+          nodeId,
+          parentId: bp.parentId ? String(bp.parentId) : undefined,
+          kind,
+          title,
+          tags: Array.isArray(bp.tags) ? (bp.tags as string[]) : undefined,
+          dependencies: Array.isArray(bp.dependencies) ? (bp.dependencies as string[]) : undefined
+        }));
+
+        // node.status
+        out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
+          nodeId,
+          status: this.toNodeStatus(String(bp.status ?? "pending"))
+        }));
+
+        // node.io（端口 + 错误 + 指标）
+        if (bp.inputPorts?.length || bp.outputPorts?.length || bp.error || bp.metrics) {
+          out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+            nodeId,
+            inputPorts: bp.inputPorts,
+            outputPorts: bp.outputPorts,
+            error: bp.error,
+            metrics: bp.metrics
+          }));
+        }
+
+        // 由 parentId 生成父子边
+        if (bp.parentId) {
+          const edgeId = `${String(bp.parentId)}->${nodeId}`;
+          out.push(this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
+            edgeId,
+            source: String(bp.parentId),
+            target: nodeId
+          }));
+        }
+
+        // 由 dependencies 生成依赖边
+        if (Array.isArray(bp.dependencies)) {
+          for (const depId of bp.dependencies as string[]) {
+            const edgeId = `${depId}=>${nodeId}`;
+            out.push(this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
+              edgeId,
+              source: depId,
+              target: nodeId,
+              edgeKind: "dependency"
+            }));
+          }
+        }
+      }
+    }
+
+    // ── 旧版：weave.dag.node（向后兼容，已不再由新 WeavePlugin 发射） ────────
     if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.node") {
       const parsed = this.safeJson(this.stringValue(event.payload?.outputText));
       if (parsed?.nodeId) {
-        // 优先使用插件明确传递的 kind，回退到启发式推断
         const explicitKind = parsed.kind ? String(parsed.kind) : undefined;
         out.push(this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
           nodeId: String(parsed.nodeId),
           parentId: parsed.parentId ? String(parsed.parentId) : undefined,
-          kind: (explicitKind as NodeUpsertPayload["kind"]) ?? this.inferKind(String(parsed.nodeId), String(parsed.label || "")),
+          kind: (explicitKind as NodeKind) ?? this.inferKind(String(parsed.nodeId), String(parsed.label || "")),
           title: String(parsed.label || "")
         }));
 
@@ -86,6 +150,7 @@ export class GraphProjector {
       }
     }
 
+    // ── weave.dag.edge（两版 WeavePlugin 均发射） ────────────────────────────
     if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.edge") {
       const parsed = this.safeJson(this.stringValue(event.payload?.outputText));
       if (parsed?.sourceId && parsed?.targetId) {
@@ -106,6 +171,7 @@ export class GraphProjector {
       }
     }
 
+    // ── Step Gate 事件 ────────────────────────────────────────────────────────
     if (event.type === "tool.gate.pending") {
       const toolCallId = this.stringValue(event.payload?.toolCallId);
       const toolName = this.stringValue(event.payload?.toolName) || "unknown";
@@ -151,6 +217,7 @@ export class GraphProjector {
       }
     }
 
+    // ── 旧版：weave.dag.detail（向后兼容） ────────────────────────────────────
     if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.detail") {
       const parsed = this.safeJson(this.stringValue(event.payload?.outputText));
       if (parsed?.nodeId) {
@@ -160,7 +227,7 @@ export class GraphProjector {
             {
               name: "detail",
               type: "text",
-              summary: this.stringValue(parsed.text) || ""
+              content: this.stringValue(parsed.text) || ""
             }
           ]
         }));
@@ -194,7 +261,6 @@ export class GraphProjector {
   }
 
   private pruneRunContexts(nowMs: number): void {
-    // 先清理超过保留窗口的运行上下文。
     for (const [runId, completedAt] of this.completedAtByRun.entries()) {
       if (nowMs - completedAt > GraphProjector.RUN_CONTEXT_GRACE_MS) {
         this.completedAtByRun.delete(runId);
@@ -203,7 +269,6 @@ export class GraphProjector {
       }
     }
 
-    // 兜底限制上下文数量，避免极端长跑服务累积。
     if (this.seqByRun.size <= GraphProjector.MAX_RUN_CONTEXTS) {
       return;
     }
@@ -218,27 +283,17 @@ export class GraphProjector {
     }
   }
 
-  private inferKind(nodeId: string, label: string): NodeUpsertPayload["kind"] {
-    if (/step\s*gate|人工拦截|暂停|挂起/i.test(label)) {
-      return "gate";
-    }
-    if (label.includes("LLM") || label.includes("决策")) {
-      return "llm";
-    }
-    if (label.includes("修复")) {
-      return "repair";
-    }
-    if (nodeId.includes("final") || label.includes("本轮完成")) {
-      return "final";
-    }
+  private inferKind(nodeId: string, label: string): NodeKind {
+    if (/step\s*gate|人工拦截|暂停|挂起/i.test(label)) return "gate";
+    if (label.includes("LLM") || label.includes("决策")) return "llm";
+    if (label.includes("修复")) return "repair";
+    if (nodeId.includes("final") || label.includes("本轮完成")) return "final";
     return "tool";
   }
 
   private toNodeStatus(input: string): NodeStatusPayload["status"] {
-    if (input === "success" || input === "fail" || input === "running" || input === "retrying" || input === "skipped") {
-      return input;
-    }
-    return "pending";
+    const valid = new Set(["pending", "ready", "blocked", "running", "waiting", "retrying", "success", "fail", "skipped", "aborted"]);
+    return valid.has(input) ? (input as NodeStatusPayload["status"]) : "pending";
   }
 
   private stringValue(value: unknown): string {
@@ -250,23 +305,11 @@ export class GraphProjector {
   }
 
   private safeJson(text: string): Record<string, unknown> | null {
-    if (!text) {
-      return null;
-    }
-
+    if (!text) return null;
     try {
       return JSON.parse(text) as Record<string, unknown>;
     } catch {
       return null;
     }
-  }
-
-  private looksLikeCommand(text: string): boolean {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return false;
-    }
-
-    return /[|><]/.test(trimmed) || /\b(ls|dir|cat|grep|findstr|awk|sed|pnpm|npm|git|node|python)\b/i.test(trimmed);
   }
 }
