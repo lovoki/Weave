@@ -1,42 +1,34 @@
 /*
- * 文件作用：语义化节点渲染组件 — 玻璃态卡片，lucide 图标，TB 方向 Handle。
+ * 文件作用：语义化节点渲染组件 — 玻璃态卡片，Emoji 图标，TB 方向 Handle。
  */
 
 import { memo } from "react";
 import { Handle, Position } from "reactflow";
-import {
-  BrainCircuit,
-  Zap,
-  PauseOctagon,
-  ShieldAlert,
-  Sparkles,
-  Cpu,
-  MessageCircle,
-  Timer,
-  Coins,
-  type LucideIcon
-} from "lucide-react";
+// import {
+//   BrainCircuit, Zap, PauseOctagon, ShieldAlert, Sparkles, Cpu, MessageCircle,
+//   Timer, Coins, type LucideIcon
+// } from "lucide-react";
 import type { GraphNodeData } from "../types/graph-events";
 
 interface KindConfig {
-  Icon: LucideIcon;
+  icon: string;
   color: string;
 }
 
 const KIND_MAP: Record<string, KindConfig> = {
-  llm:        { Icon: BrainCircuit,  color: "#a855f7" },
-  tool:       { Icon: Zap,           color: "#3b82f6" },
-  attempt:    { Icon: Zap,           color: "#3b82f6" },
-  escalation: { Icon: Zap,           color: "#3b82f6" },
-  condition:  { Icon: Zap,           color: "#3b82f6" },
-  gate:       { Icon: PauseOctagon,  color: "#f59e0b" },
-  repair:     { Icon: ShieldAlert,   color: "#ef4444" },
-  final:      { Icon: Sparkles,      color: "#10b981" },
-  system:     { Icon: Cpu,           color: "#64748b" },
-  input:      { Icon: MessageCircle, color: "#06b6d4" },
+  llm:        { icon: "🧠", color: "#a855f7" },
+  tool:       { icon: "⚡", color: "#3b82f6" },
+  attempt:    { icon: "⚡", color: "#3b82f6" },
+  escalation: { icon: "⚡", color: "#3b82f6" },
+  condition:  { icon: "⚡", color: "#3b82f6" },
+  gate:       { icon: "⏸️", color: "#f59e0b" },
+  repair:     { icon: "✖️", color: "#ef4444" },
+  final:      { icon: "✔️", color: "#10b981" },
+  system:     { icon: "🧱", color: "#64748b" },
+  input:      { icon: "💬", color: "#06b6d4" },
 };
 
-const DEFAULT_KIND: KindConfig = { Icon: Zap, color: "#3b82f6" };
+const DEFAULT_KIND: KindConfig = { icon: "⚡", color: "#3b82f6" };
 
 function getStatusDot(status?: string): { color: string; pulse: boolean } {
   if (status === "running" || status === "retrying") return { color: "#f59e0b", pulse: true };
@@ -61,7 +53,7 @@ interface SemanticNodeProps {
 export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodeProps) {
   const kind = data.kind ?? "tool";
   const status = data.status ?? "pending";
-  const { Icon, color } = KIND_MAP[kind] ?? DEFAULT_KIND;
+  const { icon, color } = KIND_MAP[kind] ?? DEFAULT_KIND;
   const dot = getStatusDot(status);
   const isPendingApproval = data.pendingApproval === true;
   const footer = parseFooter(data.subtitle);
@@ -107,7 +99,7 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
 
         {/* Top Bar */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px 4px 14px" }}>
-          <Icon size={15} color={color} strokeWidth={2} style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
           <span
             style={{
               flex: 1,
@@ -157,20 +149,15 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
               alignItems: "center",
               gap: 10,
               padding: "2px 12px 8px 14px",
+              fontSize: 11,
+              color: "#6b7280",
+              fontFamily: "'JetBrains Mono', monospace",
             }}
           >
-            {footer.ms && (
-              <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "#6b7280", fontFamily: "'JetBrains Mono', monospace" }}>
-                <Timer size={10} strokeWidth={1.5} />
-                {footer.ms}
-              </span>
-            )}
-            {footer.tokens && (
-              <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "#6b7280", fontFamily: "'JetBrains Mono', monospace" }}>
-                <Coins size={10} strokeWidth={1.5} />
-                {footer.tokens}
-              </span>
-            )}
+            {/* <Timer size={10} strokeWidth={1.5} /> */}
+            {footer.ms && <span>⏱ {footer.ms}</span>}
+            {/* <Coins size={10} strokeWidth={1.5} /> */}
+            {footer.tokens && <span>🪙 {footer.tokens}</span>}
           </div>
         )}
 
