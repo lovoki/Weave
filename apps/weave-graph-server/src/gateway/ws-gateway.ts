@@ -42,6 +42,7 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
     }
 
     runtimeIngestHandler(req.body as RuntimeRawEvent);
+    console.log(`[graph-server] ingest accepted type=${String((req.body as RuntimeRawEvent)?.type ?? "unknown")}`);
     res.status(202).json({ ok: true });
   });
 
@@ -59,7 +60,11 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
       return;
     }
 
-    if (req.headers.origin && !String(req.headers.origin).startsWith("http://127.0.0.1")) {
+    if (
+      req.headers.origin &&
+      !String(req.headers.origin).startsWith("http://127.0.0.1") &&
+      !String(req.headers.origin).startsWith("http://localhost")
+    ) {
       socket.write("HTTP/1.1 403 Forbidden\\r\\n\\r\\n");
       socket.destroy();
       return;
@@ -99,6 +104,7 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
     httpServer,
     publish(event) {
       const payload = JSON.stringify(event);
+      console.log(`[graph-server] publish event=${event.eventType} run=${event.runId} clients=${clients.size}`);
       for (const client of clients) {
         if (client.readyState === client.OPEN) {
           client.send(payload);

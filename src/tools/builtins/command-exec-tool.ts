@@ -43,6 +43,14 @@ export const commandExecTool: ToolDefinition<CommandExecArgs> = {
       };
     }
 
+    const blocked = checkCommandSafety(args.command);
+    if (blocked) {
+      return {
+        ok: false,
+        content: `安全拦截：${blocked}`
+      };
+    }
+
     const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : 15000;
     const cwd = args.cwd ?? context.workspaceRoot;
     const isWindows = process.platform === "win32";
@@ -132,6 +140,36 @@ function decodeCommandOutput(raw: Buffer | string | undefined, isWindows: boolea
   }
 
   return utf8;
+}
+
+/**
+ * 检查命令是否安全，返回拦截原因或 null（安全）。
+ */
+function checkCommandSafety(command: string): string | null {
+  const trimmed = command.trim().toLowerCase();
+
+  // 拦截破坏性命令
+  const destructivePatterns = [
+    { pattern: /\brm\s+(-rf?|--recursive)\s+[/\\]/, reason: "禁止递归删除根目录" },
+    { pattern: /\bformat\s+[a-z]:/i, reason: "禁止格式化磁盘" },
+    { pattern: /\bmkfs\b/, reason: "禁止创建文件系统" },
+    { pattern: /\bdd\s+.*of=\/dev\//, reason: "禁止直接写入设备" },
+    { pattern: />\s*\/dev\/sd[a-z]/, reason: "禁止直接写入磁盘设备" },
+    { pattern: /\b:()\s*\{\s*:\|:&\s*\};:/, reason: "禁止 fork bomb" },
+  ];
+
+  for (const { pattern, reason } of destructivePatterns) {
+    if (pattern.test(trimmed)) {
+      return reason;
+    }
+  }
+
+  // 拦截超长命令（可能包含注入尝试）
+  if (command.length > 4096) {
+    return "命令长度超过 4096 字符限制";
+  }
+
+  return null;
 }
 
 function looksLikeMojibake(text: string): boolean {

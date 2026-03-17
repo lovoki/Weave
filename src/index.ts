@@ -11,6 +11,7 @@ import React from "react";
 import { App } from "./tui/App.js";
 import { WeavePlugin } from "./weave/weave-plugin.js";
 import type { WeaveMode } from "./tui/weave-mode.js";
+import { createSessionId } from "./utils/id-gen.js";
 
 /**
  * 文件作用：命令行入口，启动终端多轮会话。
@@ -225,10 +226,6 @@ async function readAllStdinText(): Promise<string> {
   });
 }
 
-function createSessionId(): string {
-  const randomPart = Math.random().toString(36).slice(2, 10);
-  return `session_${Date.now()}_${randomPart}`;
-}
 
 function setupGraphEventForwarder(agent: AgentRuntime, logger: AppLogger): void {
   const ingestUrl = process.env.WEAVE_GRAPH_INGEST_URL?.trim() ?? "";

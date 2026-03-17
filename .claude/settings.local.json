@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "*",
+      "Bash:*",
+      "FileRead:*",
+      "FileWrite:*",
+      "DirectoryRead:*",
+      "LS:*",
+      "Glob:*",
+      "Bash(xargs wc:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm build:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(xargs:*)"
+    ]
+  }
+}

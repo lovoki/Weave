@@ -3,9 +3,16 @@ import { resolve } from "node:path";
 
 /**
  * 文件作用：提供统一日志能力，支持核心调用链路打标、按日落盘，
- * 以及“每次对话一个文档”的调用链路日志输出。
+ * 以及"每次对话一个文档"的调用链路日志输出。
  */
-export type LogLevel = "INFO" | "ERROR";
+export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
+
+const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
+  DEBUG: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3
+};
 
 export interface ConversationChainStep {
   stage: string;
@@ -14,14 +21,27 @@ export interface ConversationChainStep {
 }
 
 export class AppLogger {
+  private readonly minLevel: number;
+
   constructor(
     private readonly moduleName: string,
     private readonly runtimeLogDir = "logs/runtime",
-    private readonly enableConsoleOutput = false
-  ) {}
+    private readonly enableConsoleOutput = false,
+    minLevel: LogLevel = "INFO"
+  ) {
+    this.minLevel = LOG_LEVEL_PRIORITY[minLevel];
+  }
+
+  debug(tag: string, message: string, data?: unknown): void {
+    this.write("DEBUG", tag, message, data);
+  }
 
   info(tag: string, message: string, data?: unknown): void {
     this.write("INFO", tag, message, data);
+  }
+
+  warn(tag: string, message: string, data?: unknown): void {
+    this.write("WARN", tag, message, data);
   }
 
   error(tag: string, message: string, data?: unknown): void {
@@ -29,20 +49,24 @@ export class AppLogger {
   }
 
   private write(level: LogLevel, tag: string, message: string, data?: unknown): void {
+    if (LOG_LEVEL_PRIORITY[level] < this.minLevel) {
+      return;
+    }
+
     const timestamp = new Date().toISOString();
     const serializedData = data === undefined ? "" : ` ${safeStringify(data)}`;
     const line = `[${timestamp}] [${level}] [${this.moduleName}] [${tag}] ${message}${serializedData}`;
 
-    // 日志默认不输出到终端，避免干扰流式响应展示。
     if (this.enableConsoleOutput) {
       if (level === "ERROR") {
         console.error(line);
+      } else if (level === "WARN") {
+        console.warn(line);
       } else {
         console.log(line);
       }
     }
 
-    // 文件输出用于离线排查与历史追踪。
     const logFile = resolve(process.cwd(), this.runtimeLogDir, `${timestamp.slice(0, 10)}.log`);
     ensureDir(resolve(process.cwd(), this.runtimeLogDir));
     appendFileSync(logFile, line + "\n", "utf8");
@@ -54,7 +78,6 @@ export function writeConversationChainLog(
   summary: string,
   steps: ConversationChainStep[]
 ): string {
-  // 每次对话（session）都生成独立日志文档，便于按会话维度排障与回放。
   const outputDir = resolve(process.cwd(), "logs/conversations");
   ensureDir(outputDir);
 

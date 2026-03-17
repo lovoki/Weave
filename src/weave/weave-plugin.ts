@@ -1,4 +1,6 @@
 import type { AgentLoopPlugin, AgentPluginOutput, AgentPluginOutputs } from "../agent/plugins/agent-plugin.js";
+import { summarizeText } from "../utils/text-utils.js";
+import { formatToolIntent, type ToolIntentSemantic } from "./tool-formatters.js";
 
 /**
  * 文件作用：以观察者模式监听 Agent 原生动作，实时输出动态 DAG 节点事件。
@@ -22,11 +24,6 @@ interface DagNodeEvent {
 interface DagDetailEvent {
   nodeId: string;
   text: string;
-}
-
-interface ToolIntentSemantic {
-  title: string;
-  details: string[];
 }
 
 export class WeavePlugin implements AgentLoopPlugin {
@@ -124,7 +121,7 @@ export class WeavePlugin implements AgentLoopPlugin {
 
     const label = `${llmNodeNumber}.${nextChild}`;
     state.toolNodeLabelByCallId.set(context.toolCallId, label);
-    const semantic = this.formatToolIntent(context.toolName, context.args);
+    const semantic = formatToolIntent(context.toolName, context.args);
 
     return [
       this.buildDagOutput({
@@ -158,7 +155,7 @@ export class WeavePlugin implements AgentLoopPlugin {
       return;
     }
 
-    const semantic = this.formatToolIntent(context.toolName);
+    const semantic = formatToolIntent(context.toolName);
 
     return [
       this.buildDagOutput({
@@ -195,7 +192,7 @@ export class WeavePlugin implements AgentLoopPlugin {
       }),
       this.buildDagDetail({
         nodeId: currentNode,
-        text: `${this.summarizeText(context.finalText)}`
+        text: `${summarizeText(context.finalText)}`
       })
     ];
   }
@@ -235,77 +232,4 @@ export class WeavePlugin implements AgentLoopPlugin {
     };
   }
 
-  private summarizeText(value: unknown, maxLength = 180): string {
-    if (value === null || value === undefined) {
-      return "";
-    }
-
-    let text = "";
-    if (typeof value === "string") {
-      text = value;
-    } else {
-      try {
-        text = JSON.stringify(value);
-      } catch {
-        text = String(value);
-      }
-    }
-
-    const normalized = text.replace(/\s+/g, " ").trim();
-    if (normalized.length <= maxLength) {
-      return normalized;
-    }
-
-    return `${normalized.slice(0, maxLength)}...`;
-  }
-
-  private formatToolIntent(toolName: string, args?: unknown): ToolIntentSemantic {
-    const argObj = (args && typeof args === "object" ? (args as Record<string, unknown>) : {}) ?? {};
-    const intentSummary = this.summarizeText(argObj.__intentSummary ?? "");
-    const toolGoal = this.summarizeText(argObj.__toolGoal ?? "");
-
-    const details: string[] = [];
-    if (intentSummary) {
-      details.push(`intent=${intentSummary}`);
-    }
-    if (toolGoal) {
-      details.push(`goal=${toolGoal}`);
-    }
-
-    if (toolName === "command_exec") {
-      const command = this.summarizeText(argObj.command ?? "");
-      details.push(command ? `command=${command}` : "command=");
-      return {
-        title: "执行命令",
-        details
-      };
-    }
-
-    if (toolName === "read_file") {
-      const filePath = this.summarizeText(argObj.filePath ?? argObj.path ?? "");
-      const startLine = this.summarizeText(argObj.startLine ?? "");
-      const endLine = this.summarizeText(argObj.endLine ?? "");
-      const span = startLine || endLine ? ` lines=${startLine || "?"}-${endLine || "?"}` : "";
-      details.push(`file=${filePath || "(unknown)"}${span}`);
-      return {
-        title: "读取文件",
-        details
-      };
-    }
-
-    if (toolName === "write_file") {
-      const filePath = this.summarizeText(argObj.filePath ?? argObj.path ?? "");
-      details.push(`file=${filePath || "(unknown)"}`);
-      return {
-        title: "写入文件",
-        details
-      };
-    }
-
-    details.push(`args=${this.summarizeText(args)}`);
-    return {
-      title: `执行 ${toolName}`,
-      details
-    };
-  }
 }

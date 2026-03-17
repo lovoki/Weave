@@ -39,6 +39,28 @@ export class ToolRegistry {
       };
     }
 
+    // 运行时参数基础验证：确保 args 是对象类型
+    if (args !== undefined && args !== null && typeof args !== "object") {
+      return {
+        ok: false,
+        content: `参数类型错误：期望对象，收到 ${typeof args}`,
+        metadata: { name, argsType: typeof args }
+      };
+    }
+
+    // 验证 required 字段
+    const schema = tool.inputSchema;
+    const required = Array.isArray(schema?.required) ? schema.required as string[] : [];
+    const argObj = (args ?? {}) as Record<string, unknown>;
+    const missingFields = required.filter((field) => !(field in argObj));
+    if (missingFields.length > 0) {
+      return {
+        ok: false,
+        content: `缺少必需参数：${missingFields.join(", ")}`,
+        metadata: { name, missingFields }
+      };
+    }
+
     return tool.execute(context, args);
   }
 }

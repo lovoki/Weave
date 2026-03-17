@@ -22,16 +22,22 @@ export type RuntimeRawEvent = {
 
 export class GraphProjector {
   private seqByRun = new Map<string, number>();
+  private dagIdByRun = new Map<string, string>();
 
   project(event: RuntimeRawEvent): Array<GraphEnvelope<unknown>> {
     const out: Array<GraphEnvelope<unknown>> = [];
 
     if (event.type === "run.start") {
       const userInput = this.stringValue(event.payload?.userInput) || "";
+      const sessionId = this.stringValue(event.payload?.sessionId);
+      const turnIndex = this.numberValue(event.payload?.turnIndex);
+      const dagId = this.buildDagId(event.runId, sessionId, turnIndex);
+      this.dagIdByRun.set(event.runId, dagId);
       const inputNodeId = `${event.runId}:input`;
       out.push(this.wrap<RunStartPayload>(event.runId, "run.start", event.timestamp, {
-        sessionId: this.stringValue(event.payload?.sessionId),
-        turnIndex: this.numberValue(event.payload?.turnIndex),
+        dagId,
+        sessionId,
+        turnIndex,
         userInputSummary: userInput
       }));
 
@@ -70,6 +76,9 @@ export class GraphProjector {
         ok: event.type === "run.completed",
         finalSummary: this.stringValue(event.payload?.finalText) || this.stringValue(event.payload?.errorMessage)
       }));
+      // 运行结束后清理内部映射，防止内存泄漏。
+      this.seqByRun.delete(event.runId);
+      this.dagIdByRun.delete(event.runId);
     }
 
     if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.node") {
@@ -126,13 +135,24 @@ export class GraphProjector {
       schemaVersion: GRAPH_SCHEMA_VERSION,
       seq: next,
       runId,
+      dagId: this.dagIdByRun.get(runId) ?? runId,
       eventType,
       timestamp,
       payload
     };
   }
 
+  private buildDagId(runId: string, sessionId?: string, turnIndex?: number): string {
+    if (sessionId && typeof turnIndex === "number") {
+      return `${sessionId}:turn-${turnIndex}`;
+    }
+    return runId;
+  }
+
   private inferKind(nodeId: string, label: string): NodeUpsertPayload["kind"] {
+    if (/step\s*gate|人工拦截|暂停|挂起/i.test(label)) {
+      return "gate";
+    }
     if (label.includes("LLM") || label.includes("决策")) {
       return "llm";
     }
