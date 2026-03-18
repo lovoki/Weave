@@ -1,5 +1,6 @@
 /**
- * 文件作用：FinalNode — 表示本轮对话的最终回答节点，execute() 负责流式输出文本。
+ * 文件作用：FinalNode — 表示本轮对话的最终回答节点。
+ * doExecute() 负责流式输出文本。只能 return（成功）或 throw（失败）。
  * outputPorts: responseText（text）
  */
 
@@ -31,10 +32,7 @@ export class FinalNode extends BaseNode {
     this.completedAt = new Date().toISOString();
   }
 
-  async execute(ctx: RunContext): Promise<void> {
-    this.markRunning();
-    this.transitionInDag(ctx, "running", "scheduler-picked");
-
+  protected async doExecute(ctx: RunContext): Promise<void> {
     // 从 stateStore 尝试解析最终文本（DAG 数据边传递）
     const dagInput = ctx.stateStore.resolveNodeInput(ctx.dag, this.id);
     const finalText = this.responseText ||
@@ -49,8 +47,7 @@ export class FinalNode extends BaseNode {
     ctx.stateStore.setRunValue("finalText", finalText);
     ctx.stateStore.setNodeOutput(this.id, { ok: true, content: finalText });
 
-    this.markSuccess();
-    this.transitionInDag(ctx, "success", "final-emitted");
+    // return → BaseNode markSuccess
   }
 
   protected getSpecificFields(): Record<string, unknown> {

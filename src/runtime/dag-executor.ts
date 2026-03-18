@@ -1,6 +1,7 @@
 /**
  * 文件作用：DAG 执行器 — 主循环，并行调度所有就绪的可执行节点。
- * 每轮循环取所有 ready 节点并行执行，直到 DAG 无挂起工作为止。
+ * Phase 2 改造：Promise.all 毫秒级熔断 + AbortController 信号广播。
+ * 🛡️ 悬空 Promise 防御：每个 Promise 都有 .catch 兜底，消灭 Unhandled Rejection。
  */
 import type { DagExecutionGraph } from "./dag-graph.js";
 import type { RunContext } from "../session/run-context.js";
@@ -18,6 +19,9 @@ export class DagDeadlockError extends Error {
 
 export async function executeDag(dag: DagExecutionGraph, ctx: RunContext): Promise<string> {
   while (dag.hasPendingWork()) {
+    // 检查全局 abort signal
+    ctx.abortSignal?.throwIfAborted();
+
     const readyIds = dag.getReadyNodeIds().sort();
 
     if (readyIds.length === 0) {
@@ -31,17 +35,35 @@ export async function executeDag(dag: DagExecutionGraph, ctx: RunContext): Promi
       throw new DagDeadlockError(pendingIds);
     }
 
-    // 并行执行所有就绪节点
-    // JS 单线程安全：dag 状态变更均为同步操作，await 点之间不会有 race condition
-    await Promise.all(
-      readyIds.map(id => {
-        const node = ctx.nodeRegistry.get(id) as BaseNode | undefined;
-        if (!node) {
-          throw new Error(`executeDag: 无法找到可执行节点 ${id}，节点未在 ctx.nodeRegistry 中注册`);
-        }
-        return node.execute(ctx);
-      })
-    );
+    // 1. 启动所有并行任务
+    const nodePromises = readyIds.map(id => {
+      const node = ctx.nodeRegistry.get(id) as BaseNode | undefined;
+      if (!node) {
+        throw new Error(`executeDag: 无法找到可执行节点 ${id}，节点未在 ctx.nodeRegistry 中注册`);
+      }
+      return node.execute(ctx);
+    });
+
+    // 2. 🛡️ 极其关键的防御：吞噬滞后的异常
+    //    当 Promise.all 因 A 失败而 reject 后，B 随后抛出的 AbortError
+    //    会变成 Unhandled Promise Rejection，直接 Crash Node.js 进程！
+    //    这行代码让每个 Promise 都有一个 .catch 兜底，消灭悬空异常。
+    nodePromises.forEach(p => p.catch(() => {}));
+
+    try {
+      // 3. Promise.all 毫秒级熔断：任一节点报错，瞬间跳入 catch
+      await Promise.all(nodePromises);
+    } catch (error: any) {
+      // 4. 瞬间广播 abort 信号！其他并行节点在 catch 中自降级
+      if (!ctx.abortSignal?.aborted) {
+        ctx.abortController?.abort(error);
+      }
+
+      // 拒绝所有挂起的审批 Promise（防内存泄漏）
+      ctx.pendingRegistry?.rejectAll(new Error("DAG 执行中止"));
+
+      throw error;
+    }
   }
 
   return ctx.stateStore.getFinalText();

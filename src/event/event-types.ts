@@ -14,6 +14,7 @@ export type AgentRunEventType =
   | "tool.retry.end"
   | "tool.execution.end"
   | "plugin.output"
+  | "node.validation_error"
   | "run.completed"
   | "run.error";
 
@@ -46,5 +47,7 @@ export interface AgentRunEvent {
     pluginName?: string;
     outputType?: string;
     outputText?: string;
+    nodeId?: string;
+    errors?: string[];
   };
 }

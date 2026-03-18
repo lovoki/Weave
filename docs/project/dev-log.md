@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-03-19 · Entry 007 · Weave 框架三层解耦架构 — Template Method + IoC + Event Sourcing
+
+### 变更范围
+- `src/runtime/nodes/base-node.ts`（核心重构）
+- `src/runtime/nodes/tool-node.ts`（大幅简化）
+- `src/runtime/nodes/llm-node.ts`（适配 doExecute + try/finally）
+- `src/runtime/nodes/final-node.ts`（适配 doExecute）
+- `src/runtime/dag-executor.ts`（Promise.all 熔断 + AbortController）
+- `src/runtime/dag-graph.ts`（状态机扩展 ready→blocked/fail）
+- `src/runtime/snapshot-store.ts`（新建）
+- `src/session/run-context.ts`（扩展 AbortController/Interceptor/SnapshotStore）
+- `src/agent/run-agent.ts`（RunContext 注入新字段）
+- `src/event/event-types.ts`（新增 node.validation_error 事件）
+- `src/weave/interceptor.ts`（新建 INodeInterceptor 接口）
+- `src/weave/pending-promise-registry.ts`（新建挂起字典）
+- `src/weave/step-gate-interceptor.ts`（新建 Step Gate 拦截器）
+
+### 做了什么
+- **Phase 1 — 模板状态机**：BaseNode.execute() 重构为 Template Method，统一控制流（ready → interceptor → running → doExecute → success/fail）。子类 ToolNode/LlmNode/FinalNode 改为实现 doExecute()，只能 return 或 throw
+- **Phase 2 — AbortController 全局熔断**：RunContext 注入 AbortController + AbortSignal，dag-executor 改用 Promise.all 毫秒级熔断 + 悬空 Promise .catch 防御
+- **Phase 3 — 拦截器基础设施**：INodeInterceptor 接口（双轨制：Plugin=观察者，Interceptor=控制者）+ PendingPromiseRegistry（超时保护 + rejectAll）+ StepGateInterceptor（从 ToolNode 抽出）
+- **Phase 4 — 快照存储层**：SnapshotStore（同步冻结 + 异步装配 + 内存水位线 + JSONL 落盘），BaseNode 新增 freezeSnapshot/hydrateSnapshot/emitSnapshot
+- **七大铁律落地**：while 循环替代递归、switch 穷举 + default 拦截、try/finally Plugin 闭合、节点失败不 re-throw（DAG 继续）、AbortError 才触发全局熔断
+- **DAG 状态机扩展**：ready → blocked（拦截器拦截）和 ready → fail（拦截异常）新增为合法转换
+
+### 为什么这样做
+ToolNode.execute() 原有 ~350 行承担过多职责（Step Gate 审批 + 状态流转 + 重试链 + Plugin 钩子 + 业务执行），为后续拦截执行、节点回溯、分叉重跑等高级功能铺路，需要通过三层解耦降低复杂度
+
+### 关键决策
+- **业务失败不 re-throw**：doExecute throw 后 BaseNode 标记 fail 但不传播错误，DAG 继续执行下游节点（否则工具超时会杀死整个 DAG）
+- **StepGateInterceptor 双模式**：有 approveToolCall 回调时走 TUI 直调，无回调时走 PendingPromiseRegistry 挂起（保持测试和 TUI 向后兼容）
+- **ready → blocked 状态转换**：拦截器在执行前拦截节点的语义需要从 ready 直达 blocked，而非先 running 再 blocked
+
+---
+
 ## 2026-03-18 · Entry 006 · weave-graph-web UI 精修 Round 2 — 曜石黑主题五大致命元凶消除
 
 ### 变更范围

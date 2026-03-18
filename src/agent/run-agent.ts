@@ -30,6 +30,10 @@ import { LlmNode } from "../runtime/nodes/llm-node.js";
 import type { BaseNode } from "../runtime/nodes/base-node.js";
 import { WeaveEventBus } from "../event/event-bus.js";
 import type { RunContext, StepGateOptions } from "../session/run-context.js";
+import { PendingPromiseRegistry } from "../weave/pending-promise-registry.js";
+import { StepGateInterceptor } from "../weave/step-gate-interceptor.js";
+import { SnapshotStore } from "../runtime/snapshot-store.js";
+import * as path from "node:path";
 
 // 从 event-types 重新导出，保持向后兼容
 export type { AgentRunEventType, AgentRunEvent } from "../event/event-types.js";
@@ -263,6 +267,24 @@ export class AgentRuntime extends EventEmitter {
       }
     };
 
+    // Phase 2：全局 AbortController
+    const abortController = new AbortController();
+
+    // Phase 3：拦截器基础设施
+    const pendingRegistry = new PendingPromiseRegistry();
+    const interceptor = stepGate.enabled
+      ? new StepGateInterceptor(pendingRegistry, { enabled: true })
+      : undefined;
+
+    // Phase 4：快照存储
+    const snapshotDiskPath = path.join(process.cwd(), ".dagent", "snapshots", `${runId}.jsonl`);
+    const snapshotStore = new SnapshotStore(snapshotDiskPath);
+
+    // abortSignal 触发时清理挂起字典
+    abortController.signal.addEventListener("abort", () => {
+      pendingRegistry.rejectAll(new Error("DAG 中止"));
+    }, { once: true });
+
     const ctx: RunContext = {
       runId,
       sessionId: this.sessionId,
@@ -283,7 +305,12 @@ export class AgentRuntime extends EventEmitter {
       defaultToolTimeoutMs: getDefaultToolTimeoutMs(),
       logger: this.logger,
       maxSteps: MAX_AGENT_STEPS,
-      emitTextAsStream
+      emitTextAsStream,
+      abortController,
+      abortSignal: abortController.signal,
+      interceptor,
+      pendingRegistry,
+      snapshotStore
     };
 
     // 初始化 DAG：添加第一个 LLM 节点
@@ -294,7 +321,12 @@ export class AgentRuntime extends EventEmitter {
 
     stateStore.setRunValue("userInput", userInput);
 
-    return executeDag(dag, ctx);
+    try {
+      return await executeDag(dag, ctx);
+    } finally {
+      // 会话结束，快照完整落盘
+      await snapshotStore.flush().catch(() => {});
+    }
   }
 
   private splitText(text: string, chunkSize: number): string[] {

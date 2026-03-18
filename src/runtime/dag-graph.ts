@@ -37,7 +37,7 @@ const TERMINAL_STATUSES = new Set<DagNodeStatus>(["success", "fail", "skipped", 
 
 const ALLOWED_TRANSITIONS: Record<DagNodeStatus, Set<DagNodeStatus>> = {
   pending: new Set(["ready", "aborted"]),
-  ready: new Set(["running", "aborted"]),
+  ready: new Set(["running", "blocked", "aborted", "fail"]),
   blocked: new Set(["running", "skipped", "aborted", "fail"]),
   running: new Set(["blocked", "success", "fail", "skipped", "aborted"]),
   success: new Set(),

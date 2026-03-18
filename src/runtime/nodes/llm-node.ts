@@ -1,7 +1,8 @@
 /**
- * 文件作用：LlmNode — 表示一次 LLM 推理决策节点，execute() 驱动实际 LLM 调用并动态添加后续节点。
- * inputPorts: systemPrompt（text）+ messages（messages）
- * outputPorts: responseText（text）+ toolCalls（json，有工具调用时）
+ * 文件作用：LlmNode — 表示一次 LLM 推理决策节点。
+ * doExecute() 驱动实际 LLM 调用并动态添加后续节点。
+ * try/finally 保证 Plugin 生命周期闭合（afterLlmResponse 必须执行）。
+ * doExecute() 只能 return（成功）或 throw（失败），状态由模板方法收口。
  */
 
 import type OpenAI from "openai";
@@ -49,10 +50,7 @@ export class LlmNode extends BaseNode {
     this.toolCalls = toolCalls?.length ? toolCalls : undefined;
   }
 
-  async execute(ctx: RunContext): Promise<void> {
-    this.markRunning();
-    this.transitionInDag(ctx, "running", "scheduler-picked");
-
+  protected async doExecute(ctx: RunContext): Promise<void> {
     // 保存输入数据用于可视化
     this.systemPrompt = ctx.systemPrompt;
     this.messages = [...ctx.workingMessages];
@@ -81,12 +79,44 @@ export class LlmNode extends BaseNode {
       ctx.bus.dispatchPluginOutput(changed?.output);
     }
 
-    // LLM 调用
-    const assistantMessage = await ctx.llmClient.chatWithTools({
-      systemPrompt: effectiveSystemPrompt,
-      messages: ctx.workingMessages,
-      tools: ctx.toolRegistry.listModelTools()
-    });
+    let assistantMessage: OpenAI.Chat.Completions.ChatCompletionMessage | undefined;
+
+    try {
+      // LLM 调用（传递 abort signal）
+      assistantMessage = await ctx.llmClient.chatWithTools({
+        systemPrompt: effectiveSystemPrompt,
+        messages: ctx.workingMessages,
+        tools: ctx.toolRegistry.listModelTools()
+      });
+    } catch (error) {
+      // 🛡️ LLM 调用失败时也要闭合 Plugin 生命周期
+      for (const plugin of ctx.plugins) {
+        try {
+          await plugin.afterLlmResponse?.({
+            ...ctx.basePluginContext,
+            step: this.step,
+            assistantMessage: { role: "assistant", content: null, refusal: null } as any
+          });
+        } catch (e) {
+          ctx.logger?.warn("plugin.after_llm.error", `Plugin afterLlmResponse 异常: ${e}`);
+        }
+      }
+      throw error;
+    }
+
+    // 🛡️ try/finally 闭合 Plugin 生命周期（正常路径）
+    for (const plugin of ctx.plugins) {
+      try {
+        const output = await plugin.afterLlmResponse?.({
+          ...ctx.basePluginContext,
+          step: this.step,
+          assistantMessage
+        });
+        ctx.bus.dispatchPluginOutput(output);
+      } catch (e) {
+        ctx.logger?.warn("plugin.after_llm.error", `Plugin afterLlmResponse 异常: ${e}`);
+      }
+    }
 
     // 更新可视化数据
     this.setResponse(assistantMessage.content, assistantMessage.tool_calls ?? []);
@@ -100,16 +130,6 @@ export class LlmNode extends BaseNode {
         step: this.step
       }
     });
-
-    // afterLlmResponse 插件钩子
-    for (const plugin of ctx.plugins) {
-      const output = await plugin.afterLlmResponse?.({
-        ...ctx.basePluginContext,
-        step: this.step,
-        assistantMessage
-      });
-      ctx.bus.dispatchPluginOutput(output);
-    }
 
     const toolCalls = assistantMessage.tool_calls ?? [];
     const emitFn = (_runId: string, output: AgentPluginOutput) => ctx.bus.dispatchPluginOutput(output);
@@ -126,10 +146,7 @@ export class LlmNode extends BaseNode {
         toKey: "finalText"
       });
       ctx.nodeRegistry.set(finalNode.id, finalNode);
-
-      this.markSuccess();
-      this.transitionInDag(ctx, "success", "llm-final-answer");
-      return;
+      return; // → BaseNode markSuccess
     }
 
     // 有工具调用 → 推入 assistant 消息，创建 ToolNode
@@ -210,8 +227,7 @@ export class LlmNode extends BaseNode {
     }
 
     ctx.dag.validateIntegrity();
-    this.markSuccess();
-    this.transitionInDag(ctx, "success", "llm-scheduled-successors");
+    // return → BaseNode markSuccess
   }
 
   protected getSpecificFields(): Record<string, unknown> {
