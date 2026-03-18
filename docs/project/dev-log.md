@@ -4,6 +4,40 @@
 
 ---
 
+## 2026-03-18 · Entry 006 · weave-graph-web UI 精修 Round 2 — 曜石黑主题五大致命元凶消除
+
+### 变更范围
+- `apps/weave-graph-web/src/nodes/semantic-node.tsx`
+- `apps/weave-graph-web/src/app.css`
+- `apps/weave-graph-web/src/App.tsx`
+- `apps/weave-graph-web/src/edges/FlowEdge.tsx`
+
+### 做了什么
+- **全局色彩系统重置**：背景从蓝紫色温（`#0a0d14`）切换至曜石黑（`#09090b` Zinc-950），边框/文字全部去蓝调，对标 Radix UI / shadcn / Vercel 新版深色主题
+- **删除节点卡片顶部实心色条**（topBarStyle），左侧竖线按状态分级 opacity（success 0.7 / fail 0.75 / skipped 0.35）
+- **卡片玻璃感增强**：背景透明度 0.96→0.65，模糊量 14px→12px
+- **Inspector 端口徽章幽灵化**：彩色徽章改为统一灰色幽灵标签，复制按钮默认 `opacity:0 + pointer-events:none`，hover 才浮现
+- **success 连线降调**：60%→22% 绿色，running strokeWidth 2→1.7
+- **success/fail 节点卡片微弱光晕**（12% 强度），边框保持暗色不变
+- **status-badge 改为完全圆角胶囊**（border-radius: 20px）
+- **Canvas 空状态品牌化**：WEAVE 大字 + 副标题 + 正弦波呼吸光标（丢弃 step-end DOS 风格）
+- **环境氛围光**：钛灰高光（左上）+ 微琥珀暖光（右下），零蓝紫污染
+- **节点 hover 光学浮起**：禁止 transform（防 SVG Edge Jitter），纯阴影深化制造悬浮感
+- **选中节点 Vercel 级镂空双环**：outline + outline-offset: 3px，黑边间隙高级感
+- **hover 节点 z-index: 1000** 置顶，32px 阴影不被相邻节点遮挡
+- **FlowEdge curvature 0.25→0.35**，连线更流体
+- **Fitts 定律热区扩大**：幽灵按钮 padding:6px + margin:-6px，点击不再"点空"
+
+### 为什么这样做
+Entry 005 完成了整体框架，但五大问题（顶部色条塑料感、徽章颜色噪音、success 线过亮、成功徽章粗糙、画布缺乏品牌感）持续影响观感。用户风格方向也从蓝紫色温明确转向曜石黑中性风，本次精修以此为主线全面补完。
+
+### 关键决策
+- 卡片绝不用 `translateY` hover（否则 React Flow SVG 连线锚点偏移产生 1px 撕裂 jitter），改用阴影深化纯光学方案
+- 幽灵按钮必须 `pointer-events: none`（`opacity:0` 仍占 DOM 空间会拦截框选交互）
+- 曜石黑环境光只用钛灰+琥珀（中性+微暖），严禁蓝紫以免破坏设计纲领
+
+---
+
 ## 2026-03-18 · Entry 005 · weave-graph-web 前端 UI 全面重构 — 高级暗色工作室主题
 
 ### 变更范围
