@@ -323,20 +323,7 @@ function GraphCanvas() {
 
   const displayedNodes = layoutedNodes.length > 0 ? layoutedNodes : semanticNodes;
 
-  const emptyCanvasNode = useMemo(() => {
-    if (displayedNodes.length > 0 || activeDagId) return displayedNodes;
-
-    return [
-      {
-        id: "placeholder",
-        type: "semantic",
-        position: { x: 120, y: 120 },
-        draggable: false,
-        selectable: false,
-        data: { title: "等待会话事件", kind: "system", status: "pending", subtitle: "在 CLI 输入问题后，这里会生成 DAG" }
-      }
-    ] as Node<GraphNodeData>[];
-  }, [displayedNodes, activeDagId]);
+  const emptyCanvasNode = displayedNodes;
 
   // Inspector 内容（纵向 Accordion 布局，无 Tabs）
   const inspectorContent = useMemo(() => {
@@ -634,17 +621,17 @@ function GraphCanvas() {
             alignItems: "center", justifyContent: "center",
             pointerEvents: "none", zIndex: 1, gap: 0,
           }}>
-            <div style={{ fontSize: 96, opacity: 0.04, userSelect: "none", lineHeight: 1 }}>🌌</div>
+            <div style={{ fontSize: 96, opacity: 0.14, userSelect: "none", lineHeight: 1 }}>🌌</div>
             <div style={{
               fontFamily: "var(--font-mono)", fontSize: 32, fontWeight: 800,
-              color: "rgba(255,255,255,0.07)", letterSpacing: "0.25em",
+              color: "rgba(255,255,255,0.22)", letterSpacing: "0.25em",
               marginTop: 16, userSelect: "none",
             }}>
               WEAVE
             </div>
             <div style={{
               fontFamily: "var(--font-mono)", fontSize: 11,
-              color: "rgba(255,255,255,0.1)",
+              color: "rgba(255,255,255,0.28)",
               marginTop: 8, letterSpacing: "0.12em",
             }}>
               DAG 可视化引擎 · 等待执行<span className="cursor-blink">_</span>
