@@ -5,7 +5,7 @@
 /**
  * 将任意值转换为可读摘要文本，超出 maxLength 截断并追加省略号。
  */
-export function summarizeText(value: unknown, maxLength = 120): string {
+export function summarizeText(value: unknown, maxLength = 2000): string {
   if (value === null || value === undefined) {
     return "";
   }

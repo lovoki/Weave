@@ -413,10 +413,12 @@ function GraphCanvas() {
         {/* 左区：品牌 + 轮次徽章 */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <WeaveIcon size={24} />
-          <span style={{
+          <span 
+              className="weave-galaxy-text"
+              style={{
             fontSize: 14, fontWeight: 800,
             letterSpacing: "0.25em",
-            color: "rgba(221, 230, 240, 0.92)",
+            // color: "rgba(221, 230, 240, 0.92)",
             fontFamily: "var(--font-ui)",
           }}>WEAVE</span>
           {/* 版本号药丸 */}
@@ -515,7 +517,7 @@ function GraphCanvas() {
               (e.currentTarget as HTMLElement).style.transform = "";
             }}
           >
-            ⊞ 适合视图
+            ⊞ 居中视图
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <span className={`ws-dot ${wsStatusDot}`} />
@@ -621,18 +623,24 @@ function GraphCanvas() {
             alignItems: "center", justifyContent: "center",
             pointerEvents: "none", zIndex: 1, gap: 0,
           }}>
-            <div style={{ fontSize: 96, opacity: 0.14, userSelect: "none", lineHeight: 1 }}>🌌</div>
-            <div style={{
-              fontFamily: "var(--font-mono)", fontSize: 32, fontWeight: 800,
-              color: "rgba(255,255,255,0.22)", letterSpacing: "0.25em",
-              marginTop: 16, userSelect: "none",
-            }}>
+            <div style={{ fontSize: 188, opacity: 0.8, userSelect: "none", lineHeight: 1 }}>🌌</div>
+            <div 
+              className="weave-galaxy-text"
+              style={{
+                fontFamily: "var(--font-mono)", 
+                fontSize: 64, 
+                fontWeight: 800,
+                letterSpacing: "0.25em",
+                marginTop: 16, 
+                userSelect: "none",
+              }}
+            >
               WEAVE
             </div>
             <div style={{
-              fontFamily: "var(--font-mono)", fontSize: 11,
-              color: "rgba(255,255,255,0.28)",
-              marginTop: 8, letterSpacing: "0.12em",
+              fontFamily: "var(--font-mono)", fontSize: 24,
+              color: "rgba(255,255,255,0.8)",
+              marginTop: 12, letterSpacing: "0.12em",
             }}>
               DAG 可视化引擎 · 等待执行<span className="cursor-blink">_</span>
             </div>

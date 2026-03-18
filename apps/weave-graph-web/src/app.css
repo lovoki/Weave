@@ -1013,3 +1013,35 @@ input, textarea, [contenteditable="true"] {
     inset 0 1px 1px rgba(255, 255, 255, 0.18),
     0 8px 24px rgba(0, 0, 0, 0.5);
 }
+
+/* 1. 定义极其平滑的流转动画 */
+@keyframes galaxy-shimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 2. 赋予文字星轨流光的灵魂 */
+.weave-galaxy-text {
+  /* 完美提取 🌌 的色彩：星钻白 -> 电光蓝 -> 深邃紫 -> 星钻白 */
+  background: linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(181, 106, 251, 0.8) 25%,  /* 紫色 */
+    rgba(56, 189, 248, 0.9) 50%,  /* 亮蓝色 */
+    rgba(191, 122, 255, 0.8) 75%,  /* 紫色 */
+    rgba(255, 255, 255, 0.9) 100%
+  );
+  background-size: 200% auto;
+  
+  /* 核心魔法：把背景裁剪成文字的形状，并将文字本身变透明 */
+  color: transparent !important;
+  -webkit-background-clip: text;
+  background-clip: text;
+  
+  /* 执行 8 秒一个轮回的极慢速流光动画，毫不刺眼，尽显高级 */
+  animation: galaxy-shimmer 8s ease-in-out infinite;
+  
+  /* (可选) 给文字加一层极其微弱的深空辉光，让它有种浮在屏幕上的感觉 */
+  filter: drop-shadow(0 4px 24px rgba(168, 85, 247, 0.25));
+}
