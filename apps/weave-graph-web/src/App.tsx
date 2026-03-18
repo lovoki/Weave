@@ -188,9 +188,9 @@ function GraphCanvas() {
       const target = nodeById.get(edge.target);
       const status = target?.data.status;
       // 状态颜色系统（升级版）
-      let stroke = "rgba(58, 68, 92, 0.55)";  // pending：极弱蓝紫线
+      let stroke = "rgba(255, 255, 255, 0.07)";  // pending：中性极弱白线
       if (status === "success") {
-        stroke = "rgba(61, 198, 83, 0.6)";   // 成功：暗绿
+        stroke = "rgba(61, 198, 83, 0.22)";   // 成功：低调暗绿，不抢戏
       } else if (status === "fail") {
         stroke = "rgba(255, 96, 87, 0.7)";    // 失败：暗红
       } else if (status === "running" || status === "retrying") {
@@ -208,7 +208,7 @@ function GraphCanvas() {
         animated: isAnimated,
         style: {
           stroke,
-          strokeWidth: isAnimated ? 2 : 1.4,
+          strokeWidth: isAnimated ? 1.7 : 1.4,
           ...(isFail ? { strokeDasharray: "4 4" } : {}),
         }
       };
@@ -606,21 +606,48 @@ function GraphCanvas() {
 
       {/* ── DAG Canvas ─────────────────────────────────────────────── */}
       <main className="canvas-panel" style={{ position: "relative" }}>
-        {/* Canvas 空状态：赛博朋克仪式感水印 */}
+        {/* 环境氛围光：中性钛灰 + 微暖琥珀，配合曜石黑不扰色 */}
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0, overflow: "hidden",
+        }}>
+          {/* 左上角：钛灰/极弱冷白光（模拟屏幕高光反射）*/}
+          <div style={{
+            position: "absolute", top: "-30%", left: "-15%",
+            width: "60%", height: "70%",
+            background: "radial-gradient(ellipse, rgba(255,255,255,0.03) 0%, transparent 70%)",
+            filter: "blur(60px)",
+          }} />
+          {/* 右下角：极微弱暖琥珀光（增加物理温度感）*/}
+          <div style={{
+            position: "absolute", bottom: "-25%", right: "-10%",
+            width: "55%", height: "65%",
+            background: "radial-gradient(ellipse, rgba(210,180,140,0.02) 0%, transparent 70%)",
+            filter: "blur(60px)",
+          }} />
+        </div>
+
+        {/* Canvas 空状态：Weave 品牌化启动画面 */}
         {isCanvasEmpty && (
           <div style={{
             position: "absolute", inset: 0,
             display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center",
-            pointerEvents: "none", zIndex: 1,
+            pointerEvents: "none", zIndex: 1, gap: 0,
           }}>
-            <div style={{ fontSize: 120, opacity: 0.025, userSelect: "none", lineHeight: 1 }}>🌌</div>
+            <div style={{ fontSize: 96, opacity: 0.04, userSelect: "none", lineHeight: 1 }}>🌌</div>
             <div style={{
-              fontFamily: "var(--font-mono)", fontSize: 13,
-              color: "rgba(255,255,255,0.14)",
-              marginTop: 18, letterSpacing: "0.1em",
+              fontFamily: "var(--font-mono)", fontSize: 32, fontWeight: 800,
+              color: "rgba(255,255,255,0.07)", letterSpacing: "0.25em",
+              marginTop: 16, userSelect: "none",
             }}>
-              AWAITING_INITIAL_PROMPT<span className="cursor-blink">_</span>
+              WEAVE
+            </div>
+            <div style={{
+              fontFamily: "var(--font-mono)", fontSize: 11,
+              color: "rgba(255,255,255,0.1)",
+              marginTop: 8, letterSpacing: "0.12em",
+            }}>
+              DAG 可视化引擎 · 等待执行<span className="cursor-blink">_</span>
             </div>
           </div>
         )}
@@ -643,7 +670,7 @@ function GraphCanvas() {
             variant={BackgroundVariant.Dots}
             gap={28}
             size={1}
-            color="rgba(90, 140, 220, 0.07)"
+            color="rgba(255, 255, 255, 0.05)"
           />
           <MiniMap
             style={{ background: "var(--bg-surface)" }}

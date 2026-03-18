@@ -112,6 +112,13 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
   const footer = parseFooter(data);
   const hasFooter = Boolean(footer.ms || footer.tokens);
 
+  const vertBarOpacity =
+    status === "success" ? 0.7 :
+    status === "fail" ? 0.75 :
+    status === "skipped" ? 0.35 :
+    status === "pending" ? 0.4 :
+    undefined; // running/retrying: 不设，默认 1（已有动画）
+
   const vertBarStyle: React.CSSProperties = {
     position: "absolute",
     left: 0,
@@ -120,22 +127,11 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
     width: 4,
     borderRadius: "0 3px 3px 0",
     background: statusStyle.barColor,
-    ...(status === "pending" ? { opacity: 0.4 } : {}),
+    ...(vertBarOpacity !== undefined ? { opacity: vertBarOpacity } : {}),
     ...(statusStyle.glow ? {
       boxShadow: `0 0 10px 3px ${statusStyle.glowColor}55`,
       animation: "status-glow 1.6s ease-in-out infinite",
     } : {}),
-  };
-
-  const topBarStyle: React.CSSProperties = {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    background: `linear-gradient(90deg, ${statusStyle.barColor}, ${statusStyle.barColor}60)`,
-    ...(status === "pending" ? { opacity: 0.25 } : {}),
-    ...(statusStyle.glow ? { animation: "status-glow 1.6s ease-in-out infinite" } : {}),
   };
 
   return (
@@ -152,9 +148,9 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
           position: "relative",
           width: 248,
           borderRadius: 16,
-          background: "rgba(14, 18, 30, 0.96)",
-          backdropFilter: "blur(14px)",
-          WebkitBackdropFilter: "blur(14px)",
+          background: "rgba(20, 24, 34, 0.65)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
           /* 工业级 1px 玻璃边框 */
           border: "1px solid rgba(255, 255, 255, 0.08)",
           backgroundClip: "padding-box",
@@ -166,9 +162,6 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
           WebkitMaskImage: "-webkit-radial-gradient(white, black)",
         }}
       >
-        {/* 顶部渐变颜色条 */}
-        <div style={topBarStyle} />
-
         {/* 左侧竖线 */}
         <div style={vertBarStyle} />
 

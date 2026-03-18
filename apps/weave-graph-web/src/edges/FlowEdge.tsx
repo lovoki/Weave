@@ -25,7 +25,8 @@ export function FlowEdge({
     sourcePosition,
     targetX,
     targetY,
-    targetPosition
+    targetPosition,
+    curvature: 0.35,  // 更圆润的曲线，呼应 16px 卡片圆角
   });
 
   const pathId = `flow-path-${id}`;
