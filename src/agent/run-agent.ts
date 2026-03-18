@@ -1,27 +1,19 @@
 import { EventEmitter } from "node:events";
 import type { LlmConfig } from "../types/config.js";
-import { QwenClient, type ChatHistoryMessage } from "../llm/qwen-client.js";
+import { QwenClient } from "../llm/qwen-client.js";
 import { MemoryStore } from "../memory/memory-store.js";
 import { AppLogger } from "../logging/app-logger.js";
 import { ToolRegistry } from "../tools/tool-registry.js";
-import type { ToolExecuteResult } from "../tools/tool-types.js";
-import { createRuntimeRunner, type RunnerMode } from "../runtime/runner-selector.js";
 import { DagExecutionGraph } from "../runtime/dag-graph.js";
 import { DagStateStore } from "../runtime/state-store.js";
 import type {
-  AgentRunner,
-  RunOnceStreamOptions,
-  ToolApprovalDecision,
-  ToolApprovalRequest
+  RunOnceStreamOptions
 } from "../runtime/runner-types.js";
 import type OpenAI from "openai";
 import type {
   AgentLoopPlugin,
-  AgentPluginOutputs,
-  AgentPluginOutput,
   AgentPluginRunContext
 } from "./plugins/agent-plugin.js";
-import { summarizeText, tryParseJson, safeJsonStringify } from "../utils/text-utils.js";
 import { extractErrorMessage } from "../errors/agent-errors.js";
 import {
   MAX_AGENT_STEPS,
@@ -31,87 +23,21 @@ import {
 import {
   executeOnRunStart,
   executeOnRunCompleted,
-  executeOnRunError,
-  executeBeforeLlmRequest,
-  executeAfterLlmResponse,
-  executeBeforeToolExecution,
-  executeAfterToolExecution
+  executeOnRunError
 } from "./plugin-executor.js";
-import {
-  deriveToolIntent,
-  attachIntentToToolArgs,
-  extractRuntimeToolMeta,
-  stripRuntimeToolMeta,
-  executeToolWithTimeout as executeToolWithTimeoutFn,
-  extractJsonObject,
-  repairToolArgsByIntent,
-  type ToolIntentInfo,
-  type ToolRetryTicket,
-  type ToolRepairResult
-} from "./tool-executor.js";
-import {
-  emitDagNodeTransition,
-  emitWeaveDagNode,
-  emitWeaveDagDetail,
-  emitDagNodeDetail,
-  emitDagSchedulerIssue
-} from "./weave-emitter.js";
+import { executeDag } from "../runtime/dag-executor.js";
+import { LlmNode } from "../runtime/nodes/llm-node.js";
+import type { BaseNode } from "../runtime/nodes/base-node.js";
+import { WeaveEventBus } from "../event/event-bus.js";
+import type { RunContext, StepGateOptions } from "../session/run-context.js";
+
+// 从 event-types 重新导出，保持向后兼容
+export type { AgentRunEventType, AgentRunEvent } from "../event/event-types.js";
+import type { AgentRunEvent } from "../event/event-types.js";
 
 /**
  * 文件作用：提供 Agent 运行时最小抽象，承接上层输入并调用 LLM 客户端生成回复。
  */
-export type AgentRunEventType =
-  | "run.start"
-  | "llm.request"
-  | "llm.delta"
-  | "llm.completed"
-  | "node.pending_approval"
-  | "node.approval.resolved"
-  | "tool.execution.start"
-  | "tool.retry.start"
-  | "tool.retry.end"
-  | "tool.execution.end"
-  | "plugin.output"
-  | "run.completed"
-  | "run.error";
-
-export interface AgentRunEvent {
-  type: AgentRunEventType;
-  schemaVersion?: string;
-  eventId?: string;
-  eventType?: string;
-  runId: string;
-  timestamp: string;
-  payload?: {
-    text?: string;
-    userInput?: string;
-    errorMessage?: string;
-    finalText?: string;
-    sessionId?: string;
-    turnIndex?: number;
-    toolName?: string;
-    toolOk?: boolean;
-    toolCallId?: string;
-    toolArgsText?: string;
-    toolArgsJsonText?: string;
-    toolResultText?: string;
-    toolStatus?: "success" | "fail";
-    retryAttempt?: number;
-    retryMax?: number;
-    retryReason?: string;
-    retryPrepared?: boolean;
-    approvalAction?: "approve" | "edit" | "skip" | "abort";
-    pluginName?: string;
-    outputType?: string;
-    outputText?: string;
-  };
-}
-
-interface StepGateOptions {
-  enabled: boolean;
-  autoMode?: boolean;
-  approveToolCall?: (request: ToolApprovalRequest) => Promise<ToolApprovalDecision>;
-}
 
 export class AgentRuntime extends EventEmitter {
   private static readonly AGENT_EVENT_SCHEMA_VERSION = "dagent.agent.event.v1";
@@ -121,12 +47,9 @@ export class AgentRuntime extends EventEmitter {
   private readonly logger = new AppLogger("agent-runtime");
   private sessionId = "";
   private turnIndex = 0;
-  private readonly historyMessages: ChatHistoryMessage[] = [];
+  private readonly historyMessages: import("../llm/qwen-client.js").ChatHistoryMessage[] = [];
   private readonly streamChunkSize = 14;
   private readonly streamChunkDelayMs = 8;
-  private readonly runnerMode: RunnerMode = "legacy";
-  private readonly legacyRunner: AgentRunner;
-  private readonly dagRunner: AgentRunner;
 
   constructor(
     private readonly llmConfig: LlmConfig,
@@ -134,39 +57,18 @@ export class AgentRuntime extends EventEmitter {
     toolRegistry?: ToolRegistry
   ) {
     super();
-    // 初始化核心依赖：LLM 客户端 + 记忆存储。
     this.llmClient = new QwenClient(this.llmConfig);
     this.memoryStore = memoryStore ?? new MemoryStore();
     this.toolRegistry = toolRegistry ?? new ToolRegistry();
     this.memoryStore.ensureMemoryFiles();
-    this.legacyRunner = createRuntimeRunner({
-      mode: "legacy",
-      executeLegacy: async ({ userInput, options }) => {
-        return await this.runOnceStreamLegacy(userInput, options);
-      },
-      executeDag: async ({ userInput, options }) => {
-        return await this.runOnceStreamDag(userInput, options);
-      }
-    });
-    this.dagRunner = createRuntimeRunner({
-      mode: "dag",
-      executeLegacy: async ({ userInput, options }) => {
-        return await this.runOnceStreamLegacy(userInput, options);
-      },
-      executeDag: async ({ userInput, options }) => {
-        return await this.runOnceStreamDag(userInput, options);
-      }
-    });
 
     this.logger.info("runtime.init", "AgentRuntime 初始化完成", {
       provider: this.llmConfig.provider,
-      model: this.llmConfig.model,
-      runnerMode: this.runnerMode
+      model: this.llmConfig.model
     });
   }
 
   startSession(sessionId: string): void {
-    // 每次新会话都重置历史，保证上下文边界清晰。
     this.sessionId = sessionId;
     this.turnIndex = 0;
     this.historyMessages.length = 0;
@@ -174,12 +76,10 @@ export class AgentRuntime extends EventEmitter {
   }
 
   async runOnce(userInput: string): Promise<string> {
-    // 当前为单轮调用：后续可在这里扩展为多轮循环、工具调用和记忆注入。
     this.logger.info("run.once.start", "开始执行非流式调用", {
       userInputLength: userInput.length
     });
 
-    // 先将多源记忆合成为 system prompt，再发给模型。
     const composedSystemPrompt = this.memoryStore.buildSystemPrompt(this.llmConfig.systemPrompt);
     const finalText = await this.llmClient.chat({
       userMessage: userInput,
@@ -187,7 +87,6 @@ export class AgentRuntime extends EventEmitter {
       historyMessages: this.historyMessages
     });
 
-    // 非流式也要沉淀多轮历史，确保后续提问可引用上下文。
     this.historyMessages.push({ role: "user", content: userInput });
     this.historyMessages.push({ role: "assistant", content: finalText });
 
@@ -201,17 +100,23 @@ export class AgentRuntime extends EventEmitter {
     userInput: string,
     options?: RunOnceStreamOptions
   ): Promise<string> {
-    const runner = this.shouldUseDagRunner(options) ? this.dagRunner : this.legacyRunner;
-    return await runner.run({ userInput, options });
+    return this.runOnceStreamCommon(userInput, options, (ctx) =>
+      this.runAgentDagLoop(
+        ctx.runId,
+        userInput,
+        ctx.composedSystemPrompt,
+        ctx.plugins,
+        ctx.basePluginContext,
+        ctx.stepGate
+      )
+    );
   }
 
   /**
-   * 公共流式执行框架：setup → 核心循环 → 收尾/错误处理。
-   * Legacy 和 DAG 两条路径仅在核心循环实现上不同。
+   * 流式执行框架：setup → 核心循环 → 收尾/错误处理。
    */
   private async runOnceStreamCommon(
     userInput: string,
-    mode: "legacy" | "dag",
     options: RunOnceStreamOptions | undefined,
     coreLoop: (ctx: {
       runId: string;
@@ -223,9 +128,8 @@ export class AgentRuntime extends EventEmitter {
   ): Promise<string> {
     const runId = this.createRunId();
     this.turnIndex += 1;
-    const modeLabel = mode === "dag" ? "DAG " : "";
 
-    this.logger.info("run.stream.start", `开始执行${modeLabel}流式调用`, {
+    this.logger.info("run.stream.start", "开始执行流式调用", {
       runId,
       sessionId: this.sessionId,
       turnIndex: this.turnIndex,
@@ -280,8 +184,6 @@ export class AgentRuntime extends EventEmitter {
         payload: { finalText, sessionId: this.sessionId, turnIndex: this.turnIndex }
       });
 
-      // 先发插件收尾输出（weave.dag.node/detail），再发布 run.completed。
-      // 否则图投影层会先关闭 run 映射，导致同一轮被拆成 runId 与 session:turn 两个 DAG。
       await executeOnRunCompleted(plugins, { ...basePluginContext, finalText }, runId, this.emitPluginOutput.bind(this));
 
       this.emitRunEvent({
@@ -291,7 +193,7 @@ export class AgentRuntime extends EventEmitter {
         payload: { finalText, sessionId: this.sessionId, turnIndex: this.turnIndex }
       });
 
-      this.logger.info("run.stream.completed", `${modeLabel}流式调用完成`, {
+      this.logger.info("run.stream.completed", "流式调用完成", {
         runId,
         sessionId: this.sessionId,
         turnIndex: this.turnIndex,
@@ -311,7 +213,7 @@ export class AgentRuntime extends EventEmitter {
 
       await executeOnRunError(plugins, { ...basePluginContext, errorMessage }, runId, this.emitPluginOutput.bind(this));
 
-      this.logger.error("run.stream.error", `${modeLabel}流式调用失败`, {
+      this.logger.error("run.stream.error", "流式调用失败", {
         runId,
         sessionId: this.sessionId,
         turnIndex: this.turnIndex,
@@ -327,30 +229,6 @@ export class AgentRuntime extends EventEmitter {
     }
   }
 
-  private async runOnceStreamLegacy(
-    userInput: string,
-    options?: RunOnceStreamOptions
-  ): Promise<string> {
-    return this.runOnceStreamCommon(userInput, "legacy", options, (ctx) =>
-      this.runAgentLoop(
-        ctx.runId, userInput, ctx.composedSystemPrompt,
-        ctx.plugins, ctx.basePluginContext, ctx.stepGate
-      )
-    );
-  }
-
-  private async runOnceStreamDag(
-    userInput: string,
-    options?: RunOnceStreamOptions
-  ): Promise<string> {
-    return this.runOnceStreamCommon(userInput, "dag", options, (ctx) =>
-      this.runAgentDagLoop(
-        ctx.runId, userInput, ctx.composedSystemPrompt,
-        ctx.plugins, ctx.basePluginContext, ctx.stepGate
-      )
-    );
-  }
-
   private async runAgentDagLoop(
     runId: string,
     userInput: string,
@@ -359,1004 +237,64 @@ export class AgentRuntime extends EventEmitter {
     basePluginContext: AgentPluginRunContext,
     stepGate: StepGateOptions
   ): Promise<string> {
-    type ToolNodePayload = {
-      step: number;
-      displayNodeId: string;
-      toolCallId: string;
-      toolName: string;
-      intentSummary: string;
-      toolGoal: string;
-      rawArgsText: string;
-      maxRetries: number;
-      timeoutMs: number;
-    };
-
-    type FinalNodePayload = {
-      text: string;
-    };
-
-    const maxSteps = MAX_AGENT_STEPS;
-    const defaultToolRetries = stepGate.autoMode === true ? getDefaultToolRetries() : 0;
-    const defaultToolTimeoutMs = getDefaultToolTimeoutMs();
-    const modelTools = this.toolRegistry.listModelTools();
-    const graph = new DagExecutionGraph();
+    const dag = new DagExecutionGraph();
     const stateStore = new DagStateStore();
-    const workingMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = this.historyMessages.map(
-      (message) => ({
-        role: message.role,
-        content: message.content
-      })
+    const nodeRegistry = new Map<string, BaseNode>();
+
+    const workingMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      ...this.historyMessages.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user", content: userInput }
+    ];
+
+    const bus = new WeaveEventBus(
+      { runId, sessionId: this.sessionId, turnIndex: this.turnIndex },
+      (evt) => this.emit("event", evt)
     );
-    workingMessages.push({ role: "user", content: userInput });
+
+    // 创建流式文本输出方法（闭包引用 bus 和 chunk 配置）
+    const emitTextAsStream = async (text: string): Promise<void> => {
+      if (!text) return;
+      const chunks = this.splitText(text, this.streamChunkSize);
+      for (const chunk of chunks) {
+        bus.dispatch("llm.delta", { text: chunk });
+        if (this.streamChunkDelayMs > 0) {
+          await this.sleep(this.streamChunkDelayMs);
+        }
+      }
+    };
+
+    const ctx: RunContext = {
+      runId,
+      sessionId: this.sessionId,
+      turnIndex: this.turnIndex,
+      bus,
+      llmClient: this.llmClient,
+      toolRegistry: this.toolRegistry,
+      memoryStore: this.memoryStore,
+      dag,
+      stateStore,
+      nodeRegistry,
+      workingMessages,
+      systemPrompt,
+      plugins,
+      basePluginContext,
+      stepGate,
+      defaultToolRetries: stepGate.autoMode === true ? getDefaultToolRetries() : 0,
+      defaultToolTimeoutMs: getDefaultToolTimeoutMs(),
+      logger: this.logger,
+      maxSteps: MAX_AGENT_STEPS,
+      emitTextAsStream
+    };
+
+    // 初始化 DAG：添加第一个 LLM 节点
+    const firstLlmNode = new LlmNode("llm-1", { step: 1 });
+    dag.addNode({ id: "llm-1", type: "llm", status: "pending" });
+    nodeRegistry.set("llm-1", firstLlmNode);
+    dag.validateIntegrity();
+
     stateStore.setRunValue("userInput", userInput);
 
-    let finalText = "";
-
-    const transitionNode = (nodeId: string, toStatus: "ready" | "running" | "blocked" | "success" | "fail" | "skipped" | "aborted", reason?: string): void => {
-      const nodeBefore = graph.getNode(nodeId);
-      const transition = graph.transitionStatus(nodeId, toStatus, reason);
-      emitDagNodeTransition(runId, {
-        nodeId,
-        nodeType: nodeBefore.type,
-        fromStatus: transition.fromStatus,
-        toStatus: transition.toStatus,
-        reason: transition.reason
-      }, this.emitPluginOutput.bind(this));
-    };
-
-    const addLlmNode = (step: number, dependsOnNodeIds: string[] = []): string => {
-      const nodeId = `llm-${step}`;
-      graph.addNode({
-        id: nodeId,
-        type: "llm",
-        status: "pending",
-        payload: { step }
-      });
-
-      for (let index = 0; index < dependsOnNodeIds.length; index += 1) {
-        const depId = dependsOnNodeIds[index];
-        graph.addEdge(depId, nodeId);
-        graph.addDataEdge({
-          fromNodeId: depId,
-          toNodeId: nodeId,
-          fromKey: "content",
-          toKey: `tool_${index + 1}`
-        });
-      }
-
-      return nodeId;
-    };
-
-    addLlmNode(1);
-    graph.validateIntegrity();
-
-    while (graph.hasPendingWork()) {
-      const readyNodeIds = graph.getReadyNodeIds().sort();
-      if (readyNodeIds.length === 0) {
-        const remainingNodeIds = graph.getInProgressNodeIds();
-        emitDagSchedulerIssue(runId, "dag.scheduler.deadlock", {
-          message: "DAG 调度死锁：存在未完成节点但无可执行 ready 节点",
-          remainingNodeIds
-        }, this.emitPluginOutput.bind(this));
-        throw new Error("DAG 调度死锁：存在未完成节点但无可执行 ready 节点");
-      }
-
-      const currentNodeId = readyNodeIds[0];
-      const node = graph.getNode(currentNodeId);
-      transitionNode(currentNodeId, "running", "scheduler-picked-ready-node");
-
-      if (node.type === "llm") {
-        const step = (node.payload as { step: number }).step;
-        const dagInput = stateStore.resolveNodeInput(graph, currentNodeId);
-        stateStore.setRunValue(`${currentNodeId}.input`, dagInput);
-
-        this.logger.info("run.dag.step", "DAG 调度执行 LLM 节点", {
-          runId,
-          step,
-          nodeId: currentNodeId,
-          sessionId: this.sessionId,
-          turnIndex: this.turnIndex,
-          modelToolCount: modelTools.length,
-          dagInputKeys: Object.keys(dagInput)
-        });
-
-        let effectiveSystemPrompt = systemPrompt;
-        for (const plugin of plugins) {
-          const changed = await plugin.beforeLlmRequest?.({
-            ...basePluginContext,
-            step,
-            systemPrompt: effectiveSystemPrompt,
-            messages: workingMessages
-          });
-
-          if (changed?.systemPrompt) {
-            effectiveSystemPrompt = changed.systemPrompt;
-          }
-
-          this.emitPluginOutput(runId, changed?.output);
-        }
-
-        const assistantMessage = await this.invokeLlmWithTools({
-          systemPrompt: effectiveSystemPrompt,
-          messages: workingMessages,
-          tools: modelTools
-        });
-
-        stateStore.setNodeOutput(currentNodeId, {
-          ok: true,
-          content: assistantMessage.content ?? "",
-          metadata: {
-            toolCallCount: assistantMessage.tool_calls?.length ?? 0,
-            step
-          }
-        });
-
-        for (const plugin of plugins) {
-          const output = await plugin.afterLlmResponse?.({
-            ...basePluginContext,
-            step,
-            assistantMessage
-          });
-          this.emitPluginOutput(runId, output);
-        }
-
-        const toolCalls = assistantMessage.tool_calls ?? [];
-        if (toolCalls.length === 0) {
-          const finalNodeId = `final-${step}`;
-          graph.addNode({
-            id: finalNodeId,
-            type: "final",
-            status: "pending",
-            payload: {
-              text: assistantMessage.content ?? ""
-            } satisfies FinalNodePayload
-          });
-          graph.addEdge(currentNodeId, finalNodeId);
-          graph.addDataEdge({
-            fromNodeId: currentNodeId,
-            toNodeId: finalNodeId,
-            fromKey: "content",
-            toKey: "finalText"
-          });
-
-          transitionNode(currentNodeId, "success", "llm-final-answer");
-          continue;
-        }
-
-        workingMessages.push({
-          role: "assistant",
-          content: assistantMessage.content ?? "",
-          tool_calls: toolCalls
-        });
-
-        const toolNodeIds: string[] = [];
-        for (let index = 0; index < toolCalls.length; index += 1) {
-          const toolCall = toolCalls[index];
-          const parsedToolArgs = tryParseJson(toolCall.function.arguments || "{}") ?? {};
-          const intent = deriveToolIntent(
-            assistantMessage.content,
-            toolCall.function.name,
-            parsedToolArgs,
-            userInput
-          );
-          const toolNodeId = `tool-${step}-${index + 1}`;
-          const displayNodeId = `${step}.${index + 1}`;
-          graph.addNode({
-            id: toolNodeId,
-            type: "tool",
-            status: "pending",
-            payload: {
-              step,
-              displayNodeId,
-              toolCallId: toolCall.id,
-              toolName: toolCall.function.name,
-              intentSummary: intent.summary,
-              toolGoal: intent.goal,
-              rawArgsText: safeJsonStringify(attachIntentToToolArgs(parsedToolArgs, intent)),
-              maxRetries: defaultToolRetries,
-              timeoutMs: defaultToolTimeoutMs
-            } satisfies ToolNodePayload
-          });
-          graph.addEdge(currentNodeId, toolNodeId);
-          graph.addDataEdge({
-            fromNodeId: currentNodeId,
-            toNodeId: toolNodeId,
-            fromKey: "content",
-            toKey: "llmDecision"
-          });
-          toolNodeIds.push(toolNodeId);
-        }
-
-        if (step + 1 <= maxSteps) {
-          addLlmNode(step + 1, toolNodeIds);
-        } else {
-          const finalNodeId = `final-max-${step}`;
-          graph.addNode({
-            id: finalNodeId,
-            type: "final",
-            status: "pending",
-            payload: {
-              text: "已达到最大工具调用步数，请缩小问题范围后重试。"
-            } satisfies FinalNodePayload
-          });
-          for (const toolNodeId of toolNodeIds) {
-            graph.addEdge(toolNodeId, finalNodeId);
-            graph.addDataEdge({
-              fromNodeId: toolNodeId,
-              toNodeId: finalNodeId,
-              fromKey: "content",
-              toKey: toolNodeId
-            });
-          }
-        }
-
-        graph.validateIntegrity();
-        transitionNode(currentNodeId, "success", "llm-scheduled-next-nodes");
-        continue;
-      }
-
-      if (node.type === "tool") {
-        const payload = node.payload as ToolNodePayload;
-        const step = payload.step;
-        const detailNodeId = payload.displayNodeId || currentNodeId;
-        const dagInput = stateStore.resolveNodeInput(graph, currentNodeId);
-        stateStore.setRunValue(`${currentNodeId}.input`, dagInput);
-
-        const parsedArgs = tryParseJson(payload.rawArgsText || "{}") ?? {};
-        const runtimeMeta = extractRuntimeToolMeta(parsedArgs);
-        const intentSummary = runtimeMeta.intentSummary || payload.intentSummary;
-        const toolGoal = runtimeMeta.toolGoal || payload.toolGoal;
-
-        let effectiveArgs = parsedArgs;
-        let skipByApproval = false;
-
-        if (intentSummary) {
-          emitDagNodeDetail(runId, {
-            nodeId: detailNodeId,
-            text: `intent=${intentSummary}`
-          }, this.emitPluginOutput.bind(this));
-        }
-        if (toolGoal) {
-          emitDagNodeDetail(runId, {
-            nodeId: detailNodeId,
-            text: `goal=${toolGoal}`
-          }, this.emitPluginOutput.bind(this));
-        }
-
-        if (stepGate.enabled && stepGate.approveToolCall) {
-          transitionNode(currentNodeId, "blocked", "waiting-user-approval");
-          this.emitRunEvent({
-            type: "node.pending_approval",
-            runId,
-            timestamp: new Date().toISOString(),
-            payload: {
-              sessionId: this.sessionId,
-              turnIndex: this.turnIndex,
-              toolName: payload.toolName,
-              toolCallId: payload.toolCallId,
-              toolArgsText: summarizeText(parsedArgs),
-              toolArgsJsonText: safeJsonStringify(parsedArgs)
-            }
-          });
-
-          const decision = await stepGate.approveToolCall({
-            runId,
-            step,
-            toolName: payload.toolName,
-            toolCallId: payload.toolCallId,
-            args: parsedArgs,
-            argsText: safeJsonStringify(parsedArgs)
-          });
-
-          if (decision.action === "abort") {
-            this.emitRunEvent({
-              type: "node.approval.resolved",
-              runId,
-              timestamp: new Date().toISOString(),
-              payload: {
-                sessionId: this.sessionId,
-                turnIndex: this.turnIndex,
-                toolName: payload.toolName,
-                toolCallId: payload.toolCallId,
-                approvalAction: "abort"
-              }
-            });
-            transitionNode(currentNodeId, "aborted", "approval-aborted");
-            throw new Error("用户终止了当前回合执行");
-          }
-
-          if (decision.action === "edit" && decision.editedArgs !== undefined) {
-            effectiveArgs =
-              decision.editedArgs && typeof decision.editedArgs === "object"
-                ? (decision.editedArgs as Record<string, unknown>)
-                : {};
-          }
-
-          if (decision.action === "skip") {
-            skipByApproval = true;
-          }
-
-          this.emitRunEvent({
-            type: "node.approval.resolved",
-            runId,
-            timestamp: new Date().toISOString(),
-            payload: {
-              sessionId: this.sessionId,
-              turnIndex: this.turnIndex,
-              toolName: payload.toolName,
-              toolCallId: payload.toolCallId,
-              approvalAction: decision.action,
-              toolArgsText: summarizeText(effectiveArgs),
-              toolArgsJsonText: safeJsonStringify(effectiveArgs)
-            }
-          });
-
-          if (skipByApproval) {
-            stateStore.setNodeOutput(currentNodeId, {
-              ok: false,
-              content: "[SKIPPED by approval gate]",
-              metadata: {
-                skippedByUser: true,
-                dagInput
-              }
-            });
-            transitionNode(currentNodeId, "skipped", "approval-skipped");
-            continue;
-          }
-
-          transitionNode(currentNodeId, "running", "approval-resumed");
-        }
-
-        this.emitRunEvent({
-          type: "tool.execution.start",
-          runId,
-          timestamp: new Date().toISOString(),
-          payload: {
-            sessionId: this.sessionId,
-            turnIndex: this.turnIndex,
-            toolName: payload.toolName,
-            toolCallId: payload.toolCallId,
-            toolArgsText: summarizeText(effectiveArgs),
-            toolArgsJsonText: safeJsonStringify(effectiveArgs)
-          }
-        });
-
-        for (const plugin of plugins) {
-          const output = await plugin.beforeToolExecution?.({
-            ...basePluginContext,
-            step,
-            toolName: payload.toolName,
-            toolCallId: payload.toolCallId,
-            args: effectiveArgs,
-            intentSummary: payload.intentSummary,
-            attempt: 1,
-            maxRetries: payload.maxRetries
-          });
-          this.emitPluginOutput(runId, output);
-        }
-
-        let attempt = 0;
-        const totalAttempts = payload.maxRetries + 1;
-        let result: ToolExecuteResult = {
-          ok: false,
-          content: "工具执行失败",
-          metadata: {}
-        };
-
-        while (attempt <= payload.maxRetries) {
-          attempt += 1;
-          const attemptNodeId = `${detailNodeId}.${attempt * 2 - 1}`;
-          const attemptLabel = attempt === 1 ? `工具执行尝试 #${attempt}` : `自动重试执行 #${attempt}`;
-          emitWeaveDagNode(runId, {
-            nodeId: attemptNodeId,
-            parentId: detailNodeId,
-            label: attemptLabel,
-            status: "running"
-          }, this.emitPluginOutput.bind(this));
-          emitWeaveDagDetail(runId, {
-            nodeId: attemptNodeId,
-            text: `attempt=${attempt}/${totalAttempts}`
-          }, this.emitPluginOutput.bind(this));
-
-          const attemptStartedAt = Date.now();
-          result = await executeToolWithTimeoutFn(this.toolRegistry, {
-            toolName: payload.toolName,
-            args: effectiveArgs,
-            timeoutMs: payload.timeoutMs,
-            runId,
-            step,
-            toolCallId: payload.toolCallId,
-            sessionId: this.sessionId
-          }, this.logger);
-          const attemptElapsedMs = Math.max(0, Date.now() - attemptStartedAt);
-
-          if (result.ok) {
-            emitWeaveDagNode(runId, {
-              nodeId: attemptNodeId,
-              parentId: detailNodeId,
-              label: attemptLabel,
-              status: "success"
-            }, this.emitPluginOutput.bind(this));
-            emitWeaveDagDetail(runId, {
-              nodeId: attemptNodeId,
-              text: `ok elapsed=${attemptElapsedMs}ms result=${summarizeText(result.content, 160)}`
-            }, this.emitPluginOutput.bind(this));
-            break;
-          }
-
-          emitWeaveDagNode(runId, {
-            nodeId: attemptNodeId,
-            parentId: detailNodeId,
-            label: attemptLabel,
-            status: "fail"
-          }, this.emitPluginOutput.bind(this));
-          emitWeaveDagDetail(runId, {
-            nodeId: attemptNodeId,
-            text: `fail elapsed=${attemptElapsedMs}ms reason=${summarizeText(result.content, 160)}`
-          }, this.emitPluginOutput.bind(this));
-
-          if (attempt <= payload.maxRetries) {
-            this.emitRunEvent({
-              type: "tool.retry.start",
-              runId,
-              timestamp: new Date().toISOString(),
-              payload: {
-                sessionId: this.sessionId,
-                turnIndex: this.turnIndex,
-                toolName: payload.toolName,
-                toolCallId: payload.toolCallId,
-                retryAttempt: attempt,
-                retryMax: payload.maxRetries,
-                retryReason: summarizeText(result.content)
-              }
-            });
-
-            const repairNodeId = `${detailNodeId}.${attempt * 2}`;
-            emitWeaveDagNode(runId, {
-              nodeId: repairNodeId,
-              parentId: detailNodeId,
-              label: `局部修复参数 #${attempt}`,
-              status: "running"
-            }, this.emitPluginOutput.bind(this));
-            const repairTicket: ToolRetryTicket = {
-              toolName: payload.toolName,
-              intentSummary,
-              previousArgs: stripRuntimeToolMeta(effectiveArgs),
-              lastResult: summarizeText(result.content, 300)
-            };
-            const repairResult = await repairToolArgsByIntent(repairTicket, this.memoryStore.buildSystemPrompt(this.llmConfig.systemPrompt), (input) => this.invokeLlmText(input));
-            if (repairResult.repairedArgs) {
-              effectiveArgs = attachIntentToToolArgs(repairResult.repairedArgs, {
-                summary: intentSummary,
-                goal: toolGoal
-              });
-            }
-
-            emitWeaveDagNode(runId, {
-              nodeId: repairNodeId,
-              parentId: detailNodeId,
-              label: `局部修复参数 #${attempt}`,
-              status: "success"
-            }, this.emitPluginOutput.bind(this));
-            emitWeaveDagDetail(runId, {
-              nodeId: repairNodeId,
-              text: `llm_output=${summarizeText(repairResult.llmOutput, 200)}`
-            }, this.emitPluginOutput.bind(this));
-            emitWeaveDagDetail(runId, {
-              nodeId: repairNodeId,
-              text: repairResult.repairedArgs
-                ? `repaired_args=${safeJsonStringify(stripRuntimeToolMeta(repairResult.repairedArgs))}`
-                : `repaired_args=${safeJsonStringify(stripRuntimeToolMeta(effectiveArgs))}`
-            }, this.emitPluginOutput.bind(this));
-
-            this.emitRunEvent({
-              type: "tool.retry.end",
-              runId,
-              timestamp: new Date().toISOString(),
-              payload: {
-                sessionId: this.sessionId,
-                turnIndex: this.turnIndex,
-                toolName: payload.toolName,
-                toolCallId: payload.toolCallId,
-                retryAttempt: attempt,
-                retryMax: payload.maxRetries,
-                retryPrepared: repairResult.repairedArgs !== null
-              }
-            });
-
-            emitDagNodeDetail(runId, {
-              nodeId: detailNodeId,
-              text: `retries=${attempt}/${payload.maxRetries} ${repairResult.repairedArgs ? "args=updated" : "args=unchanged"}`
-            }, this.emitPluginOutput.bind(this));
-          }
-        }
-
-        if (!result.ok && payload.maxRetries > 0) {
-          this.emitRunEvent({
-            type: "tool.retry.end",
-            runId,
-            timestamp: new Date().toISOString(),
-            payload: {
-              sessionId: this.sessionId,
-              turnIndex: this.turnIndex,
-              toolName: payload.toolName,
-              toolCallId: payload.toolCallId,
-              retryAttempt: attempt,
-              retryMax: payload.maxRetries,
-              retryPrepared: false,
-              retryReason: "重试次数已耗尽"
-            }
-          });
-        }
-
-        for (const plugin of plugins) {
-          const output = await plugin.afterToolExecution?.({
-            ...basePluginContext,
-            step,
-            toolName: payload.toolName,
-            toolCallId: payload.toolCallId,
-            args: effectiveArgs,
-            result,
-            intentSummary: payload.intentSummary,
-            attempt,
-            totalAttempts,
-            wasRepaired: attempt > 1,
-            allFailed: !result.ok && attempt >= totalAttempts
-          });
-          this.emitPluginOutput(runId, output);
-        }
-
-        this.emitRunEvent({
-          type: "tool.execution.end",
-          runId,
-          timestamp: new Date().toISOString(),
-          payload: {
-            sessionId: this.sessionId,
-            turnIndex: this.turnIndex,
-            toolName: payload.toolName,
-            toolCallId: payload.toolCallId,
-            toolOk: result.ok,
-            toolStatus: result.ok ? "success" : "fail",
-            toolResultText: summarizeText(result.content)
-          }
-        });
-
-        stateStore.setNodeOutput(currentNodeId, {
-          ok: result.ok,
-          content: result.content,
-          metadata: {
-            ...result.metadata,
-            attempt,
-            dagInput
-          }
-        });
-
-        workingMessages.push({
-          role: "tool",
-          tool_call_id: payload.toolCallId,
-          content: JSON.stringify({
-            ok: result.ok,
-            content: result.content,
-            metadata: {
-              ...result.metadata,
-              attempt,
-              dagInput
-            }
-          })
-        });
-
-        transitionNode(currentNodeId, result.ok ? "success" : "fail", result.ok ? "tool-ok" : "tool-failed");
-        continue;
-      }
-
-      if (node.type === "final") {
-        const payload = node.payload as FinalNodePayload;
-        const resolvedFinalInput = stateStore.resolveNodeInput(graph, currentNodeId);
-        finalText = payload.text || (typeof resolvedFinalInput.finalText === "string" ? resolvedFinalInput.finalText : "");
-        await this.emitTextAsStream(runId, finalText);
-        stateStore.setNodeOutput(currentNodeId, {
-          ok: true,
-          content: finalText
-        });
-        transitionNode(currentNodeId, "success", "final-emitted");
-        return finalText;
-      }
-    }
-
-    if (!finalText) {
-      finalText = "已达到最大工具调用步数，请缩小问题范围后重试。";
-      await this.emitTextAsStream(runId, finalText);
-    }
-
-    return finalText;
-  }
-
-  private async runAgentLoop(
-    runId: string,
-    userInput: string,
-    systemPrompt: string,
-    plugins: AgentLoopPlugin[],
-    basePluginContext: AgentPluginRunContext,
-    stepGate: StepGateOptions
-  ): Promise<string> {
-    // 每轮最多执行 maxSteps 次，防止模型和工具之间出现无限循环。
-    const maxSteps = MAX_AGENT_STEPS;
-    const defaultToolTimeoutMs = getDefaultToolTimeoutMs();
-    const modelTools = this.toolRegistry.listModelTools();
-
-    // 构建本轮工作消息：历史用户/助手对话 + 本轮用户输入。
-    const workingMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = this.historyMessages.map(
-      (message) => ({
-        role: message.role,
-        content: message.content
-      })
-    );
-    workingMessages.push({ role: "user", content: userInput });
-
-    for (let step = 1; step <= maxSteps; step += 1) {
-      this.logger.info("run.loop.step", "Agent loop 执行中", {
-        runId,
-        step,
-        sessionId: this.sessionId,
-        turnIndex: this.turnIndex,
-        modelToolCount: modelTools.length
-      });
-
-      // 在 LLM 输入前执行插件钩子（Weave 可在此改写提示词）。
-      let effectiveSystemPrompt = systemPrompt;
-      for (const plugin of plugins) {
-        const changed = await plugin.beforeLlmRequest?.({
-          ...basePluginContext,
-          step,
-          systemPrompt: effectiveSystemPrompt,
-          messages: workingMessages
-        });
-
-        if (changed?.systemPrompt) {
-          effectiveSystemPrompt = changed.systemPrompt;
-        }
-
-        this.emitPluginOutput(runId, changed?.output);
-      }
-
-      // 调用模型获取回复，包含文本和工具调用指令。
-      const assistantMessage = await this.invokeLlmWithTools({
-        systemPrompt: effectiveSystemPrompt,
-        messages: workingMessages,
-        tools: modelTools
-      });
-
-      // 在 LLM 输出后执行插件钩子（Weave 可记录 DAG 节点）。
-      for (const plugin of plugins) {
-        const output = await plugin.afterLlmResponse?.({
-          ...basePluginContext,
-          step,
-          assistantMessage
-        });
-        this.emitPluginOutput(runId, output);
-      }
-
-      const toolCalls = assistantMessage.tool_calls ?? [];
-      // 模型回复中不包含工具调用时，认为本轮对话完成，输出最终文本。
-      if (toolCalls.length === 0) {
-        const finalText = assistantMessage.content ?? "";
-        // 无工具调用时，按分片发送最终文本，恢复终端可见的流式体验。
-        await this.emitTextAsStream(runId, finalText);
-        return finalText;
-      }
-
-      // 将 assistant 的工具调用消息写入上下文，供后续 tool 消息正确关联。
-      workingMessages.push({
-        role: "assistant",
-        content: assistantMessage.content ?? "",
-        tool_calls: toolCalls
-      });
-
-      // 逐个执行工具；工具结果回填给模型继续推理。
-      for (const toolCall of toolCalls) {
-        const toolName = toolCall.function.name;
-        const toolIntent = deriveToolIntent(
-          assistantMessage.content,
-          toolName,
-          tryParseJson(toolCall.function.arguments || "{}") ?? {},
-          userInput
-        );
-
-        const parsedArgs: unknown = attachIntentToToolArgs(
-          tryParseJson(toolCall.function.arguments || "{}") ?? {},
-          toolIntent
-        );
-
-        let effectiveArgs = parsedArgs;
-        let skipByApproval = false;
-        if (stepGate.enabled && stepGate.approveToolCall) {
-          this.emitRunEvent({
-            type: "node.pending_approval",
-            runId,
-            timestamp: new Date().toISOString(),
-            payload: {
-              sessionId: this.sessionId,
-              turnIndex: this.turnIndex,
-              toolName,
-              toolCallId: toolCall.id,
-              toolArgsText: summarizeText(parsedArgs),
-              toolArgsJsonText: safeJsonStringify(parsedArgs)
-            }
-          });
-
-          const decision = await stepGate.approveToolCall({
-            runId,
-            step,
-            toolName,
-            toolCallId: toolCall.id,
-            args: parsedArgs,
-            argsText: safeJsonStringify(parsedArgs)
-          });
-
-          if (decision.action === "abort") {
-            this.emitRunEvent({
-              type: "node.approval.resolved",
-              runId,
-              timestamp: new Date().toISOString(),
-              payload: {
-                sessionId: this.sessionId,
-                turnIndex: this.turnIndex,
-                toolName,
-                toolCallId: toolCall.id,
-                approvalAction: "abort"
-              }
-            });
-            throw new Error("用户终止了当前回合执行");
-          }
-
-          if (decision.action === "edit" && decision.editedArgs !== undefined) {
-            effectiveArgs =
-              decision.editedArgs && typeof decision.editedArgs === "object"
-                ? (decision.editedArgs as Record<string, unknown>)
-                : {};
-          }
-
-          if (decision.action === "skip") {
-            skipByApproval = true;
-          }
-
-          this.emitRunEvent({
-            type: "node.approval.resolved",
-            runId,
-            timestamp: new Date().toISOString(),
-            payload: {
-              sessionId: this.sessionId,
-              turnIndex: this.turnIndex,
-              toolName,
-              toolCallId: toolCall.id,
-              approvalAction: decision.action,
-              toolArgsText: summarizeText(effectiveArgs),
-              toolArgsJsonText: safeJsonStringify(effectiveArgs)
-            }
-          });
-        }
-
-        this.emitRunEvent({
-          type: "tool.execution.start",
-          runId,
-          timestamp: new Date().toISOString(),
-          payload: {
-            sessionId: this.sessionId,
-            turnIndex: this.turnIndex,
-            toolName,
-            toolCallId: toolCall.id,
-            toolArgsText: summarizeText(effectiveArgs),
-            toolArgsJsonText: safeJsonStringify(effectiveArgs)
-          }
-        });
-
-        const maxRetries = stepGate.autoMode === true ? getDefaultToolRetries() : 0;
-        let result: ToolExecuteResult = skipByApproval
-          ? { ok: false, content: "[SKIPPED by approval gate]", metadata: { skippedByUser: true } }
-          : { ok: false, content: "工具执行失败", metadata: {} };
-
-        if (skipByApproval) {
-          // 用户跳过：仍需通知插件（attempt=1, allFailed=true）
-          for (const plugin of plugins) {
-            const output = await plugin.beforeToolExecution?.({
-              ...basePluginContext,
-              step,
-              toolName,
-              toolCallId: toolCall.id,
-              args: effectiveArgs,
-              intentSummary: toolIntent.summary,
-              attempt: 1,
-              maxRetries: 0,
-              previousError: undefined,
-              repairedFrom: undefined
-            });
-            this.emitPluginOutput(runId, output);
-          }
-          for (const plugin of plugins) {
-            const output = await plugin.afterToolExecution?.({
-              ...basePluginContext,
-              step,
-              toolName,
-              toolCallId: toolCall.id,
-              args: effectiveArgs,
-              result,
-              intentSummary: toolIntent.summary,
-              attempt: 1,
-              totalAttempts: 1,
-              wasRepaired: false,
-              allFailed: true
-            });
-            this.emitPluginOutput(runId, output);
-          }
-        } else {
-          // 正常执行：每次尝试都调用 beforeToolExecution / afterToolExecution
-          let attempt = 0;
-          let previousError: string | undefined;
-          let wasRepaired = false;
-          let argsBeforeRepair: Record<string, unknown> | undefined;
-
-          while (attempt <= maxRetries) {
-            attempt += 1;
-
-            // 每次尝试前触发 beforeToolExecution（携带重试上下文）
-            for (const plugin of plugins) {
-              const output = await plugin.beforeToolExecution?.({
-                ...basePluginContext,
-                step,
-                toolName,
-                toolCallId: toolCall.id,
-                args: effectiveArgs,
-                intentSummary: toolIntent.summary,
-                attempt,
-                maxRetries,
-                previousError,
-                repairedFrom: attempt > 1 ? argsBeforeRepair : undefined
-              });
-              this.emitPluginOutput(runId, output);
-            }
-
-            if (attempt > 1) {
-              this.emitRunEvent({
-                type: "tool.retry.start",
-                runId,
-                timestamp: new Date().toISOString(),
-                payload: {
-                  sessionId: this.sessionId,
-                  turnIndex: this.turnIndex,
-                  toolName,
-                  toolCallId: toolCall.id,
-                  retryAttempt: attempt,
-                  retryMax: maxRetries + 1,
-                  retryReason: previousError,
-                  retryPrepared: wasRepaired
-                }
-              });
-            }
-
-            result = await executeToolWithTimeoutFn(this.toolRegistry, {
-              toolName,
-              args: effectiveArgs,
-              timeoutMs: defaultToolTimeoutMs,
-              runId,
-              step,
-              toolCallId: toolCall.id,
-              sessionId: this.sessionId
-            }, this.logger);
-
-            const isFinalAttempt = !result.ok && attempt > maxRetries;
-
-            // 每次尝试后触发 afterToolExecution（携带重试结果）
-            for (const plugin of plugins) {
-              const output = await plugin.afterToolExecution?.({
-                ...basePluginContext,
-                step,
-                toolName,
-                toolCallId: toolCall.id,
-                args: effectiveArgs,
-                result,
-                intentSummary: toolIntent.summary,
-                attempt,
-                totalAttempts: maxRetries + 1,
-                wasRepaired,
-                allFailed: isFinalAttempt
-              });
-              this.emitPluginOutput(runId, output);
-            }
-
-            if (attempt > 1) {
-              this.emitRunEvent({
-                type: "tool.retry.end",
-                runId,
-                timestamp: new Date().toISOString(),
-                payload: {
-                  sessionId: this.sessionId,
-                  turnIndex: this.turnIndex,
-                  toolName,
-                  toolCallId: toolCall.id,
-                  toolOk: result.ok,
-                  retryAttempt: attempt,
-                  retryMax: maxRetries + 1
-                }
-              });
-            }
-
-            if (result.ok || attempt > maxRetries) {
-              break;
-            }
-
-            // 本次失败且还有重试机会：调用局部上下文 LLM 修复参数
-            argsBeforeRepair = stripRuntimeToolMeta(effectiveArgs);
-            previousError = summarizeText(result.content, 300);
-
-            const repairResult = await repairToolArgsByIntent(
-              {
-                toolName,
-                intentSummary: toolIntent.summary,
-                previousArgs: argsBeforeRepair,
-                lastResult: previousError
-              },
-              systemPrompt,
-              (input) => this.invokeLlmText(input)
-            );
-            if (repairResult.repairedArgs) {
-              effectiveArgs = attachIntentToToolArgs(repairResult.repairedArgs, toolIntent);
-              wasRepaired = true;
-            }
-          }
-        }
-
-        this.emitRunEvent({
-          type: "tool.execution.end",
-          runId,
-          timestamp: new Date().toISOString(),
-          payload: {
-            sessionId: this.sessionId,
-            turnIndex: this.turnIndex,
-            toolName,
-            toolCallId: toolCall.id,
-            toolOk: result.ok,
-            toolStatus: result.ok ? "success" : "fail",
-            toolResultText: summarizeText(result.content)
-          }
-        });
-
-        workingMessages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify({
-            ok: result.ok,
-            content: result.content,
-            metadata: result.metadata
-          })
-        });
-      }
-
-    }
-
-    const fallback = "已达到最大工具调用步数，请缩小问题范围后重试。";
-    await this.emitTextAsStream(runId, fallback);
-    return fallback;
-  }
-
-  private async emitTextAsStream(runId: string, text: string): Promise<void> {
-    // 统一分片发射器：供“最终回答输出”与“工具过程提示”复用，避免多处重复实现。
-    if (!text) {
-      return;
-    }
-
-    const chunks = this.splitText(text, this.streamChunkSize);
-    for (const chunk of chunks) {
-      this.emitRunEvent({
-        type: "llm.delta",
-        runId,
-        timestamp: new Date().toISOString(),
-        payload: { text: chunk }
-      });
-
-      if (this.streamChunkDelayMs > 0) {
-        await this.sleep(this.streamChunkDelayMs);
-      }
-    }
+    return executeDag(dag, ctx);
   }
 
   private splitText(text: string, chunkSize: number): string[] {
@@ -1371,34 +309,7 @@ export class AgentRuntime extends EventEmitter {
     await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private async invokeLlmWithTools(input: {
-    systemPrompt: string;
-    messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
-    tools: OpenAI.Chat.Completions.ChatCompletionTool[];
-  }): Promise<OpenAI.Chat.Completions.ChatCompletionMessage> {
-    return await this.llmClient.chatWithTools(input);
-  }
-
-  private async invokeLlmText(input: {
-    systemPrompt: string;
-    userMessage: string;
-  }): Promise<string> {
-    return await this.llmClient.chat({
-      systemPrompt: input.systemPrompt,
-      userMessage: input.userMessage,
-      historyMessages: []
-    });
-  }
-
-  private shouldUseDagRunner(_options?: RunOnceStreamOptions): boolean {
-    // 统一使用单一执行路径（Legacy），WEAVE 通过钩子系统观测，无需分叉执行路径。
-    return false;
-  }
-
-
   private emitRunEvent(event: AgentRunEvent): void {
-    // 统一在事件发布点做日志打标，保证链路可追踪。
-    // delta 事件数量较大，避免刷屏，仅记录关键阶段事件。
     const enrichedEvent: AgentRunEvent = {
       ...event,
       schemaVersion: event.schemaVersion ?? AgentRuntime.AGENT_EVENT_SCHEMA_VERSION,
@@ -1417,11 +328,8 @@ export class AgentRuntime extends EventEmitter {
     this.emit("event", enrichedEvent);
   }
 
-  private emitPluginOutput(runId: string, output: AgentPluginOutputs): void {
-    if (!output) {
-      return;
-    }
-
+  private emitPluginOutput(runId: string, output: import("./plugins/agent-plugin.js").AgentPluginOutputs): void {
+    if (!output) return;
     const outputs = Array.isArray(output) ? output : [output];
     for (const item of outputs) {
       this.emitRunEvent({

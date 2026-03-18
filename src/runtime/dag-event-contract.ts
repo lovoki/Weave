@@ -21,7 +21,7 @@ export interface DagEventEnvelope<TPayload = Record<string, unknown>> {
 
 export interface DagNodeTransitionPayload {
   nodeId: string;
-  nodeType: "llm" | "tool" | "final";
+  nodeType: string;
   fromStatus: string;
   toStatus: string;
   reason?: string;

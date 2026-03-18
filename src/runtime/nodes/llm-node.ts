@@ -1,5 +1,5 @@
 /**
- * 文件作用：LlmNode — 表示一次 LLM 推理决策节点。
+ * 文件作用：LlmNode — 表示一次 LLM 推理决策节点，execute() 驱动实际 LLM 调用并动态添加后续节点。
  * inputPorts: systemPrompt（text）+ messages（messages）
  * outputPorts: responseText（text）+ toolCalls（json，有工具调用时）
  */
@@ -7,6 +7,12 @@
 import type OpenAI from "openai";
 import type { NodeKind, GraphPort } from "./node-types.js";
 import { BaseNode } from "./base-node.js";
+import { ToolNode } from "./tool-node.js";
+import { FinalNode } from "./final-node.js";
+import type { RunContext } from "../../session/run-context.js";
+import { tryParseJson, safeJsonStringify } from "../../utils/text-utils.js";
+import { emitDagNodeDetail } from "../../agent/weave-emitter.js";
+import type { AgentPluginOutput } from "../../agent/plugins/agent-plugin.js";
 
 export interface LlmNodeInit {
   step: number;
@@ -34,7 +40,7 @@ export class LlmNode extends BaseNode {
     return `LLM 决策 #${this.step}`;
   }
 
-  /** 设置 LLM 响应结果（afterLlmResponse 时调用） */
+  /** 设置 LLM 响应结果（execute() 内部调用） */
   setResponse(
     text: string | null | undefined,
     toolCalls?: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[]
@@ -43,35 +49,194 @@ export class LlmNode extends BaseNode {
     this.toolCalls = toolCalls?.length ? toolCalls : undefined;
   }
 
+  async execute(ctx: RunContext): Promise<void> {
+    this.markRunning();
+    this.transitionInDag(ctx, "running", "scheduler-picked");
+
+    // 保存输入数据用于可视化
+    this.systemPrompt = ctx.systemPrompt;
+    this.messages = [...ctx.workingMessages];
+
+    ctx.logger.info("run.dag.step", "DAG 调度执行 LLM 节点", {
+      runId: ctx.runId,
+      step: this.step,
+      nodeId: this.id,
+      sessionId: ctx.sessionId,
+      turnIndex: ctx.turnIndex,
+      modelToolCount: ctx.toolRegistry.listModelTools().length
+    });
+
+    // beforeLlmRequest 插件钩子
+    let effectiveSystemPrompt = ctx.systemPrompt;
+    for (const plugin of ctx.plugins) {
+      const changed = await plugin.beforeLlmRequest?.({
+        ...ctx.basePluginContext,
+        step: this.step,
+        systemPrompt: effectiveSystemPrompt,
+        messages: ctx.workingMessages
+      });
+      if (changed?.systemPrompt) {
+        effectiveSystemPrompt = changed.systemPrompt;
+      }
+      ctx.bus.dispatchPluginOutput(changed?.output);
+    }
+
+    // LLM 调用
+    const assistantMessage = await ctx.llmClient.chatWithTools({
+      systemPrompt: effectiveSystemPrompt,
+      messages: ctx.workingMessages,
+      tools: ctx.toolRegistry.listModelTools()
+    });
+
+    // 更新可视化数据
+    this.setResponse(assistantMessage.content, assistantMessage.tool_calls ?? []);
+
+    // 记录到状态存储
+    ctx.stateStore.setNodeOutput(this.id, {
+      ok: true,
+      content: assistantMessage.content ?? "",
+      metadata: {
+        toolCallCount: assistantMessage.tool_calls?.length ?? 0,
+        step: this.step
+      }
+    });
+
+    // afterLlmResponse 插件钩子
+    for (const plugin of ctx.plugins) {
+      const output = await plugin.afterLlmResponse?.({
+        ...ctx.basePluginContext,
+        step: this.step,
+        assistantMessage
+      });
+      ctx.bus.dispatchPluginOutput(output);
+    }
+
+    const toolCalls = assistantMessage.tool_calls ?? [];
+    const emitFn = (_runId: string, output: AgentPluginOutput) => ctx.bus.dispatchPluginOutput(output);
+
+    if (toolCalls.length === 0) {
+      // 无工具调用 → 添加 FinalNode
+      const finalNode = new FinalNode(`final-${this.step}`, assistantMessage.content ?? "");
+      ctx.dag.addNode({ id: finalNode.id, type: "final", status: "pending" });
+      ctx.dag.addEdge(this.id, finalNode.id);
+      ctx.dag.addDataEdge({
+        fromNodeId: this.id,
+        toNodeId: finalNode.id,
+        fromKey: "content",
+        toKey: "finalText"
+      });
+      ctx.nodeRegistry.set(finalNode.id, finalNode);
+
+      this.markSuccess();
+      this.transitionInDag(ctx, "success", "llm-final-answer");
+      return;
+    }
+
+    // 有工具调用 → 推入 assistant 消息，创建 ToolNode
+    ctx.workingMessages.push({
+      role: "assistant",
+      content: assistantMessage.content ?? "",
+      tool_calls: toolCalls
+    });
+
+    const toolNodeIds: string[] = [];
+    for (let i = 0; i < toolCalls.length; i++) {
+      const tc = toolCalls[i];
+      const parsedArgs = (tryParseJson(tc.function.arguments || "{}") ?? {}) as Record<string, unknown>;
+      const toolNodeId = `tool-${this.step}-${i + 1}`;
+
+      const toolNode = new ToolNode(toolNodeId, {
+        toolName: tc.function.name,
+        toolCallId: tc.id,
+        args: parsedArgs,
+        intent: assistantMessage.content ?? "",
+        maxRetries: ctx.defaultToolRetries,
+        step: this.step
+      });
+
+      ctx.dag.addNode({ id: toolNode.id, type: "tool", status: "pending" });
+      ctx.dag.addEdge(this.id, toolNode.id);
+      ctx.dag.addDataEdge({
+        fromNodeId: this.id,
+        toNodeId: toolNode.id,
+        fromKey: "content",
+        toKey: "llmDecision"
+      });
+      ctx.nodeRegistry.set(toolNode.id, toolNode);
+      toolNodeIds.push(toolNodeId);
+
+      // 发射 intent 详情事件
+      if (assistantMessage.content) {
+        emitDagNodeDetail(ctx.runId, {
+          nodeId: `${this.step}.${i + 1}`,
+          text: `intent=${assistantMessage.content.slice(0, 200)}`
+        }, emitFn);
+      }
+      emitDagNodeDetail(ctx.runId, {
+        nodeId: `${this.step}.${i + 1}`,
+        text: `args=${safeJsonStringify(parsedArgs).slice(0, 200)}`
+      }, emitFn);
+    }
+
+    if (this.step + 1 <= ctx.maxSteps) {
+      // 添加下一个 LLM 节点，等待所有工具完成
+      const nextLlmNode = new LlmNode(`llm-${this.step + 1}`, { step: this.step + 1 });
+      ctx.dag.addNode({ id: nextLlmNode.id, type: "llm", status: "pending" });
+      for (let i = 0; i < toolNodeIds.length; i++) {
+        ctx.dag.addEdge(toolNodeIds[i], nextLlmNode.id);
+        ctx.dag.addDataEdge({
+          fromNodeId: toolNodeIds[i],
+          toNodeId: nextLlmNode.id,
+          fromKey: "content",
+          toKey: `tool_${i + 1}`
+        });
+      }
+      ctx.nodeRegistry.set(nextLlmNode.id, nextLlmNode);
+    } else {
+      // 达到最大步数 → 添加兜底 FinalNode
+      const fallbackFinalId = `final-max-${this.step}`;
+      const fallbackFinal = new FinalNode(fallbackFinalId, "已达到最大工具调用步数，请缩小问题范围后重试。");
+      ctx.dag.addNode({ id: fallbackFinalId, type: "final", status: "pending" });
+      for (const toolNodeId of toolNodeIds) {
+        ctx.dag.addEdge(toolNodeId, fallbackFinalId);
+        ctx.dag.addDataEdge({
+          fromNodeId: toolNodeId,
+          toNodeId: fallbackFinalId,
+          fromKey: "content",
+          toKey: toolNodeId
+        });
+      }
+      ctx.nodeRegistry.set(fallbackFinalId, fallbackFinal);
+    }
+
+    ctx.dag.validateIntegrity();
+    this.markSuccess();
+    this.transitionInDag(ctx, "success", "llm-scheduled-successors");
+  }
+
   protected getSpecificFields(): Record<string, unknown> {
     return { step: this.step };
   }
 
   async getInputPorts(): Promise<GraphPort[]> {
     const ports: GraphPort[] = [];
-
     if (this.systemPrompt) {
       ports.push(await this.makePort("systemPrompt", "text", this.systemPrompt));
     }
-
     if (this.messages?.length) {
       ports.push(await this.makePort("messages", "messages", this.messages));
     }
-
     return ports;
   }
 
   async getOutputPorts(): Promise<GraphPort[]> {
     const ports: GraphPort[] = [];
-
     if (this.responseText !== undefined) {
       ports.push(await this.makePort("responseText", "text", this.responseText));
     }
-
     if (this.toolCalls?.length) {
       ports.push(await this.makePort("toolCalls", "json", this.toolCalls));
     }
-
     return ports;
   }
 }

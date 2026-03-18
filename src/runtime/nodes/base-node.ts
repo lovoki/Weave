@@ -16,6 +16,10 @@ import type {
 } from "./node-types.js";
 import { safeClone } from "./safe-serialize.js";
 import { globalBlobStore } from "../blob-store.js";
+import type { RunContext } from "../../session/run-context.js";
+import type { DagNodeStatus } from "../dag-graph.js";
+import { emitDagNodeTransition } from "../../agent/weave-emitter.js";
+import type { AgentPluginOutput } from "../../agent/plugins/agent-plugin.js";
 
 export abstract class BaseNode {
   abstract readonly kind: NodeKind;
@@ -72,6 +76,46 @@ export abstract class BaseNode {
       message: err.message,
       stack: "stack" in err ? err.stack : undefined
     };
+  }
+
+  /** 标记节点已跳过 */
+  markSkipped(): void {
+    this.status = "skipped";
+    this.completedAt = new Date().toISOString();
+  }
+
+  /** 标记节点已中止 */
+  markAborted(): void {
+    this.status = "aborted";
+    this.completedAt = new Date().toISOString();
+  }
+
+  /**
+   * 节点执行入口（默认空实现，调度器不执行未注册的可视化容器节点）。
+   * LlmNode / ToolNode / FinalNode 覆盖此方法实现真实逻辑。
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async execute(_ctx: RunContext): Promise<void> {
+    // 默认空实现：数据容器节点（RepairNode、EscalationNode 等）不需要调度执行
+  }
+
+  /**
+   * 更新 DAG 调度图中本节点状态，并发射可视化事件。
+   * 子类在 execute() 中通过此方法驱动状态流转。
+   */
+  protected transitionInDag(ctx: RunContext, to: DagNodeStatus, reason?: string): void {
+    const dagNode = ctx.dag.getNode(this.id);
+    const transition = ctx.dag.transitionStatus(this.id, to, reason);
+    const emitFn = (_runId: string, output: AgentPluginOutput) => {
+      ctx.bus.dispatchPluginOutput(output);
+    };
+    emitDagNodeTransition(ctx.runId, {
+      nodeId: this.id,
+      nodeType: dagNode.type,
+      fromStatus: transition.fromStatus,
+      toStatus: transition.toStatus,
+      reason: transition.reason
+    }, emitFn);
   }
 
   // ── 序列化 ───────────────────────────────────────────────────────────────────

@@ -52,6 +52,10 @@ export class DagStateStore {
     return resolved;
   }
 
+  getFinalText(): string {
+    return this.getRunValue<string>("finalText") ?? "";
+  }
+
   snapshot(): DagRunSnapshot {
     return {
       runContext: Object.fromEntries(this.runContext.entries()),

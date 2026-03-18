@@ -175,10 +175,10 @@ class TurnDAGBuilder {
         {
           toolName,
           toolCallId,
-          args,
-          intentSummary: title,
-          toolGoal: semantic.details.join(" "),
-          maxRetries
+          args: (args && typeof args === "object" ? args : {}) as Record<string, unknown>,
+          intent: title,
+          maxRetries,
+          step: this.toolIndex
         },
         this.currentLlmId || undefined
       ));

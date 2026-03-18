@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-03-18 · Entry 004 · 核心运行时大重构：事件总线、RunContext、DAG 执行器与节点 execute()
+
+### 变更范围
+- `src/event/event-types.ts`（新建）
+- `src/event/event-bus.ts`（新建）
+- `src/session/run-context.ts`（新建）
+- `src/runtime/dag-executor.ts`（新建）
+- `src/runtime/dag-graph.ts`（扩展 DagNodeType）
+- `src/runtime/dag-event-contract.ts`（放宽 nodeType 类型约束）
+- `src/runtime/state-store.ts`（新增 getFinalText()）
+- `src/runtime/nodes/base-node.ts`（新增 markSkipped/markAborted/execute/transitionInDag）
+- `src/runtime/nodes/llm-node.ts`（全量重写，execute() 驱动 LLM 调用与 DAG 动态扩展）
+- `src/runtime/nodes/tool-node.ts`（全量重写，execute() 内嵌完整重试链）
+- `src/runtime/nodes/final-node.ts`（全量重写，execute() 驱动流式输出）
+- `src/agent/tool-executor.ts`（精简，移除 deriveToolIntent/attachIntentToToolArgs/stripRuntimeToolMeta）
+- `src/agent/run-agent.ts`（大幅精简，统一走 DAG 路径，移除 legacy runner）
+- `src/weave/weave-plugin.ts`（调整 ToolNode 构造参数适配新接口）
+
+### 做了什么
+- 新建 `event/` 模块：`AgentRunEvent` 纯类型定义与 `WeaveEventBus` 统一事件总线（自动注入 runId/sessionId/turnIndex）
+- 新建 `session/run-context.ts`：`RunContext` 接口集中注入所有 DAG 节点执行所需依赖
+- 新建 `runtime/dag-executor.ts`：`executeDag()` 并行调度所有 ready 节点，内含死锁检测
+- `BaseNode` 增加 `execute(ctx)` 默认空实现与 `transitionInDag()` 状态流转辅助方法
+- `LlmNode.execute()` 驱动真实 LLM 调用，动态向 DAG 添加 ToolNode 或 FinalNode
+- `ToolNode.execute()` 内嵌完整重试链（StepGate 审批、工具执行、RepairNode 可视化、EscalationNode 兜底）
+- `FinalNode.execute()` 从 stateStore 读取最终文本并流式输出
+- `run-agent.ts` 移除 legacy runner 分支，统一通过 `executeDag` 调度
+- 扩展 `DagNodeType` 支持 `"repair"` 与 `"escalation"` 类型
+
+### 为什么这样做
+原有 `run-agent.ts` 包含 legacy 和 DAG 两条并行路径，代码超过 1300 行，节点逻辑零散分布在 run-agent.ts 的各函数中。本次重构将执行逻辑内聚到节点自身的 `execute()` 方法，调度器只负责调度 ready 节点，彻底消除 legacy 路径，实现了单一执行路径、可观测性完整、易于扩展的架构目标。
+
+### 关键决策
+- `RunContext` 作为依赖容器注入节点，避免节点直接引用 AgentRuntime 造成循环依赖
+- `WeaveEventBus` 封装事件发射，使节点代码不依赖 EventEmitter 具体实现
+- `executeDag` 中 JS 单线程保证并行 await 之间无 DAG 状态竞争
+
+---
+
 ## 2026-03-18 · Entry 003 · weave-graph-web 全面 UI 重构（深空控制台主题）
 
 ### 变更范围

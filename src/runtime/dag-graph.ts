@@ -1,7 +1,7 @@
 /**
  * 文件作用：提供 DAG 图模型，内置节点状态机约束、数据边与调度校验。
  */
-export type DagNodeType = "llm" | "tool" | "final";
+export type DagNodeType = "llm" | "tool" | "final" | "repair" | "escalation";
 export type DagNodeStatus =
   | "pending"
   | "ready"
