@@ -30,6 +30,8 @@ export abstract class BaseNode {
 
   // ── 唯一真相源 ──────────────────────────────────────────────────────────────
   public status: NodeStatus = "pending";
+  /** 时序防御令牌：每次 transitionInDag 递增，丢弃过期异步回调 */
+  private lastHydrationToken = 0;
   public startedAt?: string;
   public completedAt?: string;
   public error?: NodeError;
@@ -227,6 +229,35 @@ export abstract class BaseNode {
   protected transitionInDag(ctx: RunContext, to: DagNodeStatus, reason?: string): void {
     const currentSnapshot = this.freezeSnapshot();
     ctx.dag.transitionStatus(this.id, to, reason, currentSnapshot);
+
+    // 生成本次异步请求的专属令牌，防止时序倒流覆盖
+    const currentToken = ++this.lastHydrationToken;
+
+    // 异步补充端口数据，不阻塞主流程
+    void this.hydrateSnapshot(currentSnapshot)
+      .then(fullPayload => {
+        // 🛡️ 时序防御：若已有更新的状态流转，丢弃过期数据
+        if (this.lastHydrationToken !== currentToken) return;
+        if (
+          fullPayload.inputPorts?.length ||
+          fullPayload.outputPorts?.length ||
+          fullPayload.error ||
+          Object.keys(fullPayload.metrics ?? {}).length > 0
+        ) {
+          ctx.dag.getEngineEventBus()?.onNodeIo(
+            this.id,
+            fullPayload.inputPorts,
+            fullPayload.outputPorts,
+            fullPayload.error,
+            fullPayload.metrics
+          );
+        }
+      })
+      .catch((err: Error) => {
+        // 🛡️ 绝不静音：记录日志便于排查 BlobStore 故障
+        ctx.logger?.error("node.io.hydration.failed",
+          `节点 ${this.id} 异步端口装配失败: ${err.message}`);
+      });
   }
 
   // ── 快照能力 ───────────────────────────────────────────────────────────────

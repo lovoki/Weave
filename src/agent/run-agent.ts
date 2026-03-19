@@ -301,6 +301,9 @@ export class AgentRuntime extends EventEmitter {
       onNodeTransition(nodeId, nodeType, fromStatus, toStatus, reason, updatedPayload) {
         bus.dispatch("engine.node.transition", { nodeId, nodeType, fromStatus, toStatus, reason, updatedPayload });
       },
+      onNodeIo(nodeId, inputPorts, outputPorts, error, metrics) {
+        bus.dispatch("engine.node.io", { nodeId, inputPorts, outputPorts, error, metrics });
+      },
       onSchedulerIssue(type, message, nodeIds) {
         bus.dispatch("engine.scheduler.issue", { issueType: type, message, nodeIds });
       }

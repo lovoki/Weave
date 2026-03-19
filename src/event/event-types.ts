@@ -21,6 +21,7 @@ export type AgentRunEventType =
   | "engine.edge.created"
   | "engine.data.edge.created"
   | "engine.node.transition"
+  | "engine.node.io"
   | "engine.scheduler.issue";
 
 export interface AgentRunEvent {
@@ -71,5 +72,10 @@ export interface AgentRunEvent {
     message?: string;
     nodeIds?: string[];
     payload?: Record<string, unknown>;
+    // engine.node.io 端口字段
+    inputPorts?: unknown[];
+    outputPorts?: unknown[];
+    error?: unknown;
+    metrics?: unknown;
   };
 }

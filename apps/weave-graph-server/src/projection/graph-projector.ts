@@ -149,6 +149,19 @@ export class GraphProjector {
       }
     }
 
+    if (event.type === "engine.node.io") {
+      const nodeId = this.stringValue(event.payload?.nodeId);
+      if (nodeId) {
+        out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+          nodeId,
+          inputPorts: event.payload?.inputPorts as BaseNodePayload["inputPorts"],
+          outputPorts: event.payload?.outputPorts as BaseNodePayload["outputPorts"],
+          error: event.payload?.error as BaseNodePayload["error"],
+          metrics: event.payload?.metrics as BaseNodePayload["metrics"]
+        }));
+      }
+    }
+
     if (event.type === "engine.scheduler.issue") {
       // 调度器死锁/完整性问题 — 记录为系统节点（前端可展示警告）
       const issueType = this.stringValue(event.payload?.issueType);

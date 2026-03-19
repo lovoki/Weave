@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-03-19 · Entry 009 · 修复节点端口数据未传递前端 + 图协议接口文档
+
+### 变更范围
+- `src/runtime/engine-event-bus.ts`（新增 `onNodeIo` 方法）
+- `src/runtime/nodes/base-node.ts`（`transitionInDag` 追加异步端口广播 + 时序防御令牌）
+- `src/event/event-types.ts`（新增 `engine.node.io` 事件类型和 `inputPorts`/`outputPorts`/`error`/`metrics` 字段）
+- `src/agent/run-agent.ts`（engineBus 适配器实现 `onNodeIo`）
+- `apps/weave-graph-server/src/projection/graph-projector.ts`（处理 `engine.node.io` → `node.io`）
+- `docs/api/graph-protocol.md`（新建：完整前后端接口文档）
+
+### 做了什么
+- `freezeSnapshot()` 是同步方法，不含端口数据，导致 Inspector 面板的 inputPorts/outputPorts 始终为空
+- 在 `transitionInDag()` 同步流程完成后，追加 `void hydrateSnapshot().then(...)` 异步端口广播
+- 引入 `lastHydrationToken` 递增令牌防止时序倒流（running→50ms hydrate, success→10ms hydrate，后者先到场景）
+- `.catch()` 记录 logger.error 而非静音吞异常，便于排查 BlobStore 故障
+- `IEngineEventBus` 新增 `onNodeIo(nodeId, inputPorts, outputPorts, error, metrics)` 纯接口方法
+- `GraphProjector` 新增 `engine.node.io` 处理分支，直接映射为 `node.io`（Partial Update）
+- 新建 `docs/api/graph-protocol.md`：认证鉴权、下行事件流（含合并策略）、上行指令流、转换矩阵
+
+### 为什么这样做
+前端 Inspector 面板显示为空是因为端口数据走了"永远为 false"的条件分支——`node.io` 事件从未发出。根本原因是 `freezeSnapshot()` 设计上不含端口（正确的），但广播路径上没有异步补充端口的机制。本次修复以最小侵入方式在 `transitionInDag` 末尾挂载异步广播，不改变主流程同步性。
+
+### 关键决策
+采用令牌（Token）而非取消信号（AbortController）防止时序倒流：令牌实现更轻量，且失败仅为"丢弃过期数据"而非异常传播，符合"端口数据是锦上添花而非核心流程"的定位。
+
 ## 2026-03-19 · Entry 008 · 三层解耦 v2 — IEngineEventBus + DagGraph 广播站
 
 ### 变更范围

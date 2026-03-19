@@ -5,6 +5,7 @@
  */
 
 import type { DagDataEdge } from "./dag-graph.js";
+import type { GraphPort, NodeError, NodeMetrics } from "./nodes/node-types.js";
 
 export interface IEngineEventBus {
   onNodeCreated(nodeId: string, nodeType: string, frozen: Record<string, unknown>): void;
@@ -18,6 +19,14 @@ export interface IEngineEventBus {
     toStatus: string,
     reason?: string,
     updatedPayload?: Record<string, unknown>
+  ): void;
+  /** 异步端口数据广播 — 节点状态流转后补充 inputPorts/outputPorts/error/metrics */
+  onNodeIo(
+    nodeId: string,
+    inputPorts?: GraphPort[],
+    outputPorts?: GraphPort[],
+    error?: NodeError,
+    metrics?: NodeMetrics
   ): void;
   onSchedulerIssue(type: "deadlock" | "integrity", message: string, nodeIds?: string[]): void;
 }
