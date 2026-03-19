@@ -341,6 +341,7 @@ export class AgentRuntime extends EventEmitter {
     // 初始化 DAG：InputNode（终态广播）→ llm-1（调度起点）
     const inputNode = new InputNode("input", userInput);
     dag.addNode({ id: "input", type: "input", status: "success" }, inputNode.freezeSnapshot());
+    inputNode.broadcastIo(ctx);
 
     const firstLlmNode = new LlmNode("llm-1", { step: 1 });
     dag.addNode({ id: "llm-1", type: "llm", status: "pending" }, firstLlmNode.freezeSnapshot());

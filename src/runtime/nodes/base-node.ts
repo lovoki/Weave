@@ -229,12 +229,19 @@ export abstract class BaseNode {
   protected transitionInDag(ctx: RunContext, to: DagNodeStatus, reason?: string): void {
     const currentSnapshot = this.freezeSnapshot();
     ctx.dag.transitionStatus(this.id, to, reason, currentSnapshot);
+    this.broadcastIo(ctx);
+  }
 
+  /**
+   * 异步广播端口数据到 IEngineEventBus（onNodeIo）。
+   * 直接 addNode 的节点（InputNode/RepairNode/RetryToolNode）无法经过 transitionInDag，
+   * 需在 addNode 之后手动调用本方法。
+   */
+  public broadcastIo(ctx: RunContext): void {
     // 生成本次异步请求的专属令牌，防止时序倒流覆盖
     const currentToken = ++this.lastHydrationToken;
 
-    // 异步补充端口数据，不阻塞主流程
-    void this.hydrateSnapshot(currentSnapshot)
+    void this.hydrateSnapshot(this.freezeSnapshot())
       .then(fullPayload => {
         // 🛡️ 时序防御：若已有更新的状态流转，丢弃过期数据
         if (this.lastHydrationToken !== currentToken) return;

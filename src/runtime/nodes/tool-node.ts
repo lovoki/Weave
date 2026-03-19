@@ -250,6 +250,7 @@ export class ToolNode extends BaseNode {
         repairNode.setRepaired(repairedArgs);
         ctx.dag.addNode({ id: repairNode.id, type: "repair", status: "success" }, repairNode.freezeSnapshot());
         ctx.dag.addEdge(prevNodeId, repairNode.id);
+        repairNode.broadcastIo(ctx);
         prevNodeId = repairNode.id;
 
         ctx.bus.dispatch("tool.retry.end", {
@@ -311,6 +312,7 @@ export class ToolNode extends BaseNode {
         const retryStatus = finalResult.ok ? "success" : "fail";
         ctx.dag.addNode({ id: retryNode.id, type: "tool", status: retryStatus }, retryNode.freezeSnapshot());
         ctx.dag.addEdge(prevNodeId, retryNode.id);
+        retryNode.broadcastIo(ctx);
         prevNodeId = retryNode.id;
       }
 
