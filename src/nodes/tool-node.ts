@@ -20,6 +20,7 @@ export interface ToolNodeInit {
   toolCallId: string;
   args: Record<string, unknown>;
   /** LLM 输出文本（thinking），用作工具意图说明 */
+  // todo: 不是LLM输出的文本，而是工具的intent字段
   intent?: string;
   maxRetries: number;
   step: number;

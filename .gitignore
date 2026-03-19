@@ -4,3 +4,6 @@ dist/
 config/llm.config.json
 logs/
 sessions/
+*.run.log
+dagent\logs
+dagent\.dagent

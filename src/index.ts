@@ -156,6 +156,7 @@ async function runBatchSession(input: {
     turn += 1;
     input.recorder.recordUser(turn, rawLine);
 
+    // 插件为空数组
     const plugins: import("./agent/plugins/agent-plugin.js").AgentLoopPlugin[] = [];
     try {
       const finalText = await input.agent.runOnceStream(parsed.question, {
