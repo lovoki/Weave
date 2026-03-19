@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-03-19 · Entry 010 · 修复 InputNode/RepairNode/RetryToolNode 端口数据未广播
+
+### 变更范围
+- `src/runtime/nodes/base-node.ts`（新增 `broadcastIo` 公共方法，重构 `transitionInDag`）
+- `src/agent/run-agent.ts`（InputNode addNode 后补调 `broadcastIo`）
+- `src/runtime/nodes/tool-node.ts`（RepairNode/RetryToolNode addNode 后补调 `broadcastIo`）
+
+### 做了什么
+- 发现 LLM 节点可正常显示端口，但输入节点、修复节点、重试工具节点的 Inspector 面板仍为空
+- 根本原因：这三类节点直接调用 `ctx.dag.addNode(..., node.freezeSnapshot())` 绕过了 `execute()`/`transitionInDag()`，Entry 009 引入的异步 IO 广播完全不触发
+- 将 IO 广播逻辑从 `transitionInDag` 提取为 `broadcastIo(ctx)` 公共方法
+- 在三处直接 `addNode` 的位置补调 `broadcastIo(ctx)`
+
+### 为什么这样做
+这三类节点是"数据容器节点"——创建时状态已是终态（success/fail），不经过调度器调度，因此绕过了模板方法控制流。修复方式最小侵入：只在 addNode 后补一次异步广播，不改变节点的创建/存储逻辑。
+
 ## 2026-03-19 · Entry 009 · 修复节点端口数据未传递前端 + 图协议接口文档
 
 ### 变更范围
