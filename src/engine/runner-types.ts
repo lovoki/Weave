@@ -8,6 +8,7 @@ export interface ToolApprovalRequest {
   step: number;
   toolName: string;
   toolCallId: string;
+  nodeId: string;
   args: unknown;
   argsText: string;
 }

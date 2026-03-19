@@ -168,11 +168,6 @@ export class DagExecutionGraph {
     return { nodeId, fromStatus, toStatus, reason };
   }
 
-  // 兼容旧调用入口，内部统一走状态机迁移校验。
-  setStatus(nodeId: string, status: DagNodeStatus): void {
-    this.transitionStatus(nodeId, status);
-  }
-
   getNode<TPayload = unknown>(nodeId: string): DagNode<TPayload> {
     const node = this.nodes.get(nodeId);
     if (!node) {

@@ -4,8 +4,8 @@
  */
 
 import * as fs from "node:fs";
-import type { NodeStatus } from "./nodes/node-types.js";
-import type { BaseNodePayload } from "./nodes/node-types.js";
+import type { NodeStatus } from "../nodes/node-types.js";
+import type { BaseNodePayload } from "../nodes/node-types.js";
 
 export interface FrozenSnapshot {
   nodeId: string;
