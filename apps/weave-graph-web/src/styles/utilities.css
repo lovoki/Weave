@@ -1,0 +1,48 @@
+@layer utilities {
+  .emoji-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+    line-height: 1;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+    user-select: none;
+  }
+
+  .weave-galaxy-text {
+    background: linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(181, 106, 251, 0.8) 25%,
+      rgba(56, 189, 248, 0.9) 50%,
+      rgba(191, 122, 255, 0.8) 75%,
+      rgba(255, 255, 255, 0.9) 100%
+    );
+    background-size: 200% auto;
+    color: transparent !important;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: galaxy-shimmer 8s ease-in-out infinite;
+    filter: drop-shadow(0 4px 24px rgba(168, 85, 247, 0.25));
+  }
+  
+  .custom-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 130, 180, 0.15) transparent;
+  }
+
+  .custom-scroll::-webkit-scrollbar {
+    width: 4px;
+    background: transparent;
+  }
+  .custom-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+  }
+  .custom-scroll:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+  }
+}

@@ -78,6 +78,10 @@ export interface GraphPort {
    */
   content: unknown;
   blobRef?: string;
+  metadata?: {
+    is_delta?: boolean;
+    [key: string]: unknown;
+  };
 }
 
 // ─── BaseNodePayload（权威前后端 DTO） ───────────────────────────────────────

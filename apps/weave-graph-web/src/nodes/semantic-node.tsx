@@ -1,9 +1,5 @@
-/*
- * 文件作用：语义化节点渲染组件 — 高级暗色工作室风格卡片，Emoji图标，玻璃态边框，状态光晕伪元素。
- */
-
-import { memo } from "react";
-import { Handle, Position } from "reactflow";
+import React, { memo } from "react";
+import { Handle, Position, NodeProps } from "reactflow";
 import type { GraphNodeData } from "../types/graph-events";
 import { LlmIcon } from "../icons/LlmIcon";
 import { ToolIcon } from "../icons/ToolIcon";
@@ -15,6 +11,7 @@ import { InputIcon } from "../icons/InputIcon";
 import { SystemIcon } from "../icons/SystemIcon";
 import { RepairIcon } from "../icons/RepairIcon";
 import { ConditionIcon } from "../icons/ConditionIcon";
+import styles from "./SemanticNode.module.css";
 
 interface KindConfig {
   Icon: React.ComponentType<{ size?: number; color?: string }>;
@@ -74,7 +71,7 @@ function getStatusStyle(status?: string, kindColor?: string): StatusStyle {
         barColor: "#6e7a90", glowColor: "#6e7a90", glow: false,
         badgeText: "SKIP", badgeBg: "rgba(110,122,144,0.15)", badgeColor: "#6e7a90", badgePulse: false,
       };
-    default: // pending
+    default:
       return {
         barColor: kindColor ?? "#4a5468", glowColor: kindColor ?? "#4a5468", glow: false,
         badgeText: "WAIT", badgeBg: "rgba(48,54,61,0.4)", badgeColor: "#5a6b82", badgePulse: false,
@@ -99,11 +96,22 @@ function parseFooter(data: GraphNodeData): { ms?: string; tokens?: string } {
   return { ms, tokens };
 }
 
-interface SemanticNodeProps {
-  data: GraphNodeData;
-}
+const areEqual = (prev: NodeProps<GraphNodeData>, next: NodeProps<GraphNodeData>) => {
+  return (
+    prev.id === next.id &&
+    prev.selected === next.selected &&
+    prev.dragging === next.dragging && // 显式包含 dragging 状态
+    prev.data.status === next.data.status &&
+    prev.data.title === next.data.title &&
+    prev.data.pendingApproval === next.data.pendingApproval &&
+    prev.data.subtitle === next.data.subtitle &&
+    prev.data.error === next.data.error &&
+    prev.data.outputPorts === next.data.outputPorts &&
+    prev.data.inputPorts === next.data.inputPorts
+  );
+};
 
-export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodeProps) {
+export const SemanticNode = memo(function SemanticNode({ data }: NodeProps<GraphNodeData>) {
   const kind = data.kind ?? "tool";
   const status = data.status ?? "pending";
   const { Icon, color, label } = KIND_MAP[kind] ?? DEFAULT_KIND;
@@ -117,15 +125,9 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
     status === "fail" ? 0.75 :
     status === "skipped" ? 0.35 :
     status === "pending" ? 0.4 :
-    undefined; // running/retrying: 不设，默认 1（已有动画）
+    undefined;
 
   const vertBarStyle: React.CSSProperties = {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    borderRadius: "0 3px 3px 0",
     background: statusStyle.barColor,
     ...(vertBarOpacity !== undefined ? { opacity: vertBarOpacity } : {}),
     ...(statusStyle.glow ? {
@@ -134,6 +136,12 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
     } : {}),
   };
 
+  const cardClassName = [
+    styles.nodeCard,
+    styles.nodeEnter,
+    status === "running" || status === "retrying" ? styles.nodeRunning : ""
+  ].join(" ");
+
   return (
     <div
       className={`node-status-${status} ${isPendingApproval ? "node-pending-approval" : ""}`}
@@ -141,32 +149,10 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
     >
       <Handle type="target" position={Position.Top} className="node-handle" />
 
-      <div
-        className="semantic-node-card"
-        data-status={status}
-        style={{
-          position: "relative",
-          width: 248,
-          borderRadius: 16,
-          background: "rgba(20, 24, 34, 0.65)",
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
-          /* 工业级 1px 玻璃边框 */
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          backgroundClip: "padding-box",
-          /* 内高光 + 外阴影（用 filter 避免脏渗透）*/
-          boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.12)",
-          filter: "drop-shadow(0 6px 20px rgba(0, 0, 0, 0.55))",
-          overflow: "hidden",
-          /* Safari WebKit 毛玻璃圆角 Bug 修复 */
-          WebkitMaskImage: "-webkit-radial-gradient(white, black)",
-        }}
-      >
-        {/* 左侧竖线 */}
-        <div style={vertBarStyle} />
+      <div className={cardClassName} data-status={status}>
+        <div className={styles.vertBar} style={vertBarStyle} />
 
-        {/* TypeBar：emoji 图标 + 类型小字 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "10px 12px 3px 16px" }}>
+        <div className={styles.typeBar}>
           <Icon size={13} color={color} />
           <span
             style={{
@@ -182,14 +168,13 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
           </span>
         </div>
 
-        {/* TitleRow：主标题 + StatusBadge */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 12px 5px 16px" }}>
+        <div className={styles.titleRow}>
           <span
             style={{
               flex: 1,
               fontSize: 13,
               fontWeight: 600,
-              color: "rgba(221, 230, 240, 0.92)",
+              color: "var(--text-main)",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -209,7 +194,39 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
           </span>
         </div>
 
-        {/* 审批副标题 */}
+        {(() => {
+          const livePort = data.outputPorts?.find(p => p.name === "live_stream");
+          if (!livePort || !livePort.content) return null;
+          
+          return (
+            <div className={styles.streamLog}>
+              <div
+                style={{
+                  fontSize: 11,
+                  lineHeight: "1.4",
+                  color: "rgba(180, 200, 230, 0.85)",
+                  fontFamily: "var(--font-mono)",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                }}
+              >
+                {String(livePort.content)}
+                {status === "running" && (
+                  <span style={{ 
+                    display: "inline-block", 
+                    width: 6, 
+                    height: 12, 
+                    background: color, 
+                    marginLeft: 2,
+                    verticalAlign: "middle",
+                    animation: "blink 1s step-end infinite" 
+                  }} />
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {isPendingApproval && (
           <div
             style={{
@@ -225,22 +242,8 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
           </div>
         )}
 
-        {/* FooterBar：耗时 + tokens */}
         {hasFooter ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "3px 12px 9px 16px",
-              fontSize: 10,
-              color: "#5a6b82",
-              fontFamily: "var(--font-mono)",
-              borderTop: "1px solid rgba(58, 68, 92, 0.4)",
-              marginTop: 2,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
+          <div className={styles.footerBar}>
             {footer.ms && <span>⏱ {footer.ms}</span>}
             {footer.tokens && <span>· {footer.tokens} tok</span>}
           </div>
@@ -252,4 +255,5 @@ export const SemanticNode = memo(function SemanticNode({ data }: SemanticNodePro
       <Handle type="source" position={Position.Bottom} className="node-handle" />
     </div>
   );
-});
+}, areEqual);
+SemanticNode.displayName = "SemanticNode";

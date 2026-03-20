@@ -343,7 +343,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 // ─── 辅助函数 ──────────────────────────────────────────────────────────────
 
 /**
- * 合并端口列表：若同名端口已存在则覆盖，否则追加。
+ * 合并端口列表：
+ * - 若同名端口已存在且 incoming 带有 is_delta 标记，则执行字符串追加。
+ * - 否则，执行覆盖。
  */
 function mergePorts(existing?: GraphPort[], incoming?: GraphPort[]): GraphPort[] | undefined {
   if (!incoming?.length) return existing;
@@ -351,7 +353,18 @@ function mergePorts(existing?: GraphPort[], incoming?: GraphPort[]): GraphPort[]
 
   const map = new Map(existing.map((p) => [p.name, p]));
   for (const port of incoming) {
-    map.set(port.name, port);
+    const existingPort = map.get(port.name);
+    if (existingPort && port.metadata?.is_delta === true) {
+      // 执行流式追加
+      map.set(port.name, {
+        ...existingPort,
+        content: String(existingPort.content ?? "") + String(port.content ?? ""),
+        metadata: { ...existingPort.metadata, ...port.metadata }
+      });
+    } else {
+      // 普通覆盖
+      map.set(port.name, port);
+    }
   }
   return [...map.values()];
 }

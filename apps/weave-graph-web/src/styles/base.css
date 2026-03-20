@@ -1,0 +1,53 @@
+@layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    font-family: var(--font-ui);
+    background: transparent; /* 必须透明 */
+    color: var(--text-main);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-variant-ligatures: contextual;
+    overscroll-behavior-y: none;
+  }
+
+  ::selection {
+    background: rgba(180, 138, 255, 0.3);
+    color: #fff;
+  }
+
+  input, textarea, [contenteditable="true"] {
+    caret-color: var(--color-llm);
+  }
+
+  *:focus { outline: none; }
+  *:focus-visible {
+    outline: 2px solid rgba(180, 138, 255, 0.6);
+    outline-offset: 2px;
+    border-radius: inherit;
+    box-shadow: 0 0 0 4px rgba(180, 138, 255, 0.1);
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.4s;
+    animation-timing-function: ease-out;
+  }
+  ::view-transition-new(root) {
+    animation-name: theme-reveal;
+    clip-path: circle(0% at var(--click-x) var(--click-y));
+  }
+  @keyframes theme-reveal {
+    to { clip-path: circle(150% at var(--click-x) var(--click-y)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

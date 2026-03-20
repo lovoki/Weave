@@ -1,0 +1,102 @@
+@layer tokens {
+  :root {
+    --bg-base:     #09090b;
+    --bg-surface:  #111113;
+    --bg-raised:   #1a1a1e;
+    --bg-overlay:  #212126;
+    --bg-app:      var(--bg-base);
+    --bg-panel:    var(--bg-surface);
+
+    --glass-bg:     rgba(17, 17, 19, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.07);
+    --glass-blur:   20px;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+
+    --border-dim:    rgba(255, 255, 255, 0.07);
+    --border-muted:  rgba(255, 255, 255, 0.12);
+    --border-active: rgba(255, 255, 255, 0.35);
+    --border-glass:  rgba(255, 255, 255, 0.07);
+    --border-subtle: var(--border-dim);
+
+    --text-primary:   rgba(250, 250, 252, 0.92);
+    --text-secondary: #a1a1aa;
+    --text-muted:     #52525b;
+    --text-accent:    #d4d4d8;
+    --text-main:      var(--text-primary);
+    --text-soft:      var(--text-secondary);
+
+    --color-llm:       #b48aff;
+    --color-tool:      #5aadff;
+    --color-gate:      #ffab5e;
+    --color-final:     #3dc653;
+    --color-input:     #38d8f8;
+    --color-system:    #6e7a90;
+    --color-repair:    #ff6057;
+    --color-condition: #7ec8ff;
+
+    --status-running:  #f5a623;
+    --status-retrying: #e8872a;
+    --status-success:  #3dc653;
+    --status-fail:     #ff6057;
+    --status-skipped:  #6e7a90;
+    --status-pending-border: #4a5468;
+
+    --ease-spring:    cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+    --duration-fast:   120ms;
+    --duration-normal: 220ms;
+    --duration-slow:   380ms;
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+
+    --font-ui:   'Inter', 'SF Pro Display', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+
+    --transition-layout: width 0.26s var(--ease-out-quart);
+
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+
+  /* 性能降级策略：CPU 模式 */
+  .perf-low {
+    --glass-blur: 0px;
+    --glass-bg: rgba(11, 11, 13, 0.95);
+    --duration-slow: 0ms; /* 弱化耗时较长的动画 */
+  }
+
+  /* 拖拽实时响应：关闭所有布局过渡 */
+  .is-resizing * {
+    transition: none !important;
+    cursor: col-resize !important;
+  }
+
+  @supports (color: color(display-p3 1 1 1)) {
+    :root {
+      --color-llm:    color(display-p3 0.7 0.45 1.0);
+      --color-tool:   color(display-p3 0.25 0.65 1.0);
+      --color-repair: color(display-p3 1.0 0.35 0.3);
+    }
+  }
+
+  .light-theme {
+    --bg-base:     #f8f9fa;
+    --bg-surface:  #ffffff;
+    --bg-raised:   #ffffff;
+    --bg-overlay:  #f0f0f0;
+    --bg-app:      var(--bg-base);
+    --bg-panel:    var(--bg-surface);
+    --text-primary:   #1a1a2e;
+    --text-secondary: #6b7280;
+    --text-muted:     #9ca3af;
+    --text-main:      var(--text-primary);
+    --border-dim:    rgba(0, 0, 0, 0.07);
+    --border-muted:  rgba(0, 0, 0, 0.12);
+    --border-active: rgba(0, 0, 0, 0.35);
+    --glass-bg:     rgba(255, 255, 255, 0.85);
+    --glass-border: rgba(0, 0, 0, 0.07);
+    --glass-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+}

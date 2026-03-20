@@ -1,0 +1,30 @@
+.edgePath {
+  transition: stroke var(--duration-fast);
+  shape-rendering: geometricPrecision;
+}
+
+.edgeGlow {
+  filter: drop-shadow(0 0 4px var(--purple-glow));
+  animation: edge-glow 2s ease-in-out infinite;
+}
+
+:global(.is-dragging-node) .edgeGlow {
+  filter: none !important; /* 拖拽时禁用昂贵的 SVG 滤镜 */
+}
+
+.starParticle {
+  fill: #fff;
+  filter: drop-shadow(0 0 4px #fff) drop-shadow(0 0 8px var(--purple));
+  will-change: offset-distance, opacity;
+}
+
+.labelContainer {
+  fill: var(--bg-overlay);
+  stroke-opacity: 0.6;
+}
+
+.labelText {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}

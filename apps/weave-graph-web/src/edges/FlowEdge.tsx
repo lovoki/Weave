@@ -1,24 +1,38 @@
-/*
- * 文件作用：带彗星流光动画的流动边组件。
- * 双层渲染：静态发光轨道（带 filter）+ 纯净彗星动线（无 filter，GPU 友好）。
- * 3 锚点渐变（紫→蓝→蓝），消除 RGB 插值泥泞色。
- * shape-rendering: geometricPrecision 消除亚像素虚边。
- */
+import React, { memo } from "react";
+import { getBezierPath, type EdgeProps, useStore } from "reactflow";
+import styles from "./FlowEdge.module.css";
 
-import { getBezierPath, type EdgeProps } from "reactflow";
+const areEqual = (prev: EdgeProps, next: EdgeProps) => {
+  return (
+    prev.id === next.id &&
+    prev.sourceX === next.sourceX &&
+    prev.sourceY === next.sourceY &&
+    prev.targetX === next.targetX &&
+    prev.targetY === next.targetY &&
+    prev.sourceHandleId === next.sourceHandleId &&
+    prev.targetHandleId === next.targetHandleId
+  );
+};
 
-export function FlowEdge({
+export const FlowEdge = memo(function FlowEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
   targetY,
   sourcePosition,
   targetPosition,
-  style = {},
-  animated,
   data,
 }: EdgeProps) {
+  // 从局部 store 获取节点状态，避免 App.tsx 的全局映射
+  const targetNode = useStore(
+    (s) => s.nodeInternals.get(target)
+  );
+  
+  const status = targetNode?.data?.status;
+
   const [edgePath] = getBezierPath({
     sourceX,
     sourceY,
@@ -26,16 +40,23 @@ export function FlowEdge({
     targetX,
     targetY,
     targetPosition,
-    curvature: 0.35,  // 更圆润的曲线，呼应 16px 卡片圆角
+    curvature: 0.35,
   });
 
-  const pathId = `flow-path-${id}`;
   const gradientId = `grad-${id}`;
   const arrowId = `arrow-${id}`;
-  const strokeColor = (style?.stroke as string) ?? "rgba(90,173,255,0.6)";
-  const strokeWidth = (style?.strokeWidth as number) ?? 1.5;
+  
+  // 核心样式逻辑局部化
+  let strokeColor = "var(--border-muted)";
+  if (status === "success") strokeColor = "rgba(61, 198, 83, 0.22)";
+  else if (status === "fail") strokeColor = "rgba(255, 96, 87, 0.7)";
+  else if (status === "running" || status === "retrying") strokeColor = "rgba(90, 173, 255, 0.95)";
+  else if (status === "skipped") strokeColor = "rgba(90, 102, 120, 0.35)";
 
-  // Edge label based on edgeKind
+  const isAnimated = status === "running" || status === "retrying";
+  const isFail = status === "fail";
+  const strokeWidth = isAnimated ? 1.7 : 1.4;
+
   const edgeKind = (data as { edgeKind?: string } | undefined)?.edgeKind;
   let edgeLabelText = "";
   let edgeLabelColor = "#8fa3bc";
@@ -46,13 +67,9 @@ export function FlowEdge({
   const midX = (sourceX + targetX) / 2;
   const midY = (sourceY + targetY) / 2;
 
-  // fail 边：虚线
-  const isFail = (style?.strokeDasharray as string | undefined) !== undefined;
-
   return (
     <g style={{ shapeRendering: "geometricPrecision" } as React.CSSProperties}>
       <defs>
-        {/* Per-edge arrow marker */}
         <marker
           id={arrowId}
           markerWidth="8"
@@ -64,14 +81,13 @@ export function FlowEdge({
         >
           <path
             d="M0,0 L0,6 L8,3 z"
-            fill={animated ? "#b48aff" : strokeColor}
-            opacity={animated ? 0.85 : 0.6}
+            fill={isAnimated ? "#b48aff" : strokeColor}
+            opacity={isAnimated ? 0.85 : 0.6}
           />
         </marker>
 
-        {animated && (
+        {isAnimated && (
           <>
-            {/* 3 锚点渐变：紫 → 蓝 → 天蓝，消除 RGB 泥潭色 */}
             <linearGradient
               id={gradientId}
               gradientUnits="userSpaceOnUse"
@@ -83,7 +99,6 @@ export function FlowEdge({
               <stop offset="100%" stopColor="#5aadff" stopOpacity="0.9" />
             </linearGradient>
 
-            {/* 底层：静态发光轨道（唯一携带 filter 的层，不参与动画）*/}
             <filter id={`track-glow-${id}`} x="-60%" y="-60%" width="220%" height="220%">
               <feGaussianBlur stdDeviation="2" result="blur" />
               <feMerge>
@@ -95,11 +110,7 @@ export function FlowEdge({
         )}
       </defs>
 
-      {/* Hidden path for particle motion */}
-      {animated && <path id={pathId} d={edgePath} fill="none" stroke="none" />}
-
-      {/* 底层：静态轨道（running 时显示渐变 + 发光） */}
-      {animated ? (
+      {isAnimated ? (
         <path
           d={edgePath}
           fill="none"
@@ -108,50 +119,31 @@ export function FlowEdge({
           opacity={0.35}
           filter={`url(#track-glow-${id})`}
           markerEnd={`url(#${arrowId})`}
+          className={styles.edgeGlow}
         />
       ) : (
         <path
           d={edgePath}
-          style={style}
           fill="none"
           strokeWidth={strokeWidth}
           stroke={strokeColor}
           markerEnd={`url(#${arrowId})`}
-          {...(isFail ? { strokeDasharray: style?.strokeDasharray as string } : {})}
+          strokeDasharray={isFail ? "4 4" : undefined}
+          className={styles.edgePath}
         />
       )}
 
-      {/* 顶层：纯净彗星动线（绝不加 filter，GPU 零负担）*/}
-      {animated && (
-        <path
-          d={edgePath}
-          fill="none"
-          strokeWidth={strokeWidth + 0.5}
-          stroke="#b48aff"
-          strokeLinecap="round"
-          strokeDasharray="12 88"
+      {isAnimated && (
+        <circle
+          r="2"
+          className={styles.starParticle}
           style={{
-            animation: `comet-flow 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
-          }}
+            offsetPath: `path('${edgePath}')`,
+            animation: `comet-flow 2s linear infinite`,
+          } as any}
         />
       )}
 
-      {/* 第二彗星（相位偏移 0.75s，天蓝色）*/}
-      {animated && (
-        <path
-          d={edgePath}
-          fill="none"
-          strokeWidth={strokeWidth - 0.2}
-          stroke="#5aadff"
-          strokeLinecap="round"
-          strokeDasharray="8 92"
-          style={{
-            animation: `comet-flow 1.5s cubic-bezier(0.4, 0, 0.2, 1) -0.75s infinite`,
-          }}
-        />
-      )}
-
-      {/* Edge label */}
       {edgeLabelText && (
         <g>
           <rect
@@ -160,20 +152,17 @@ export function FlowEdge({
             width="56"
             height="16"
             rx="4"
-            fill="rgba(11,14,22,0.95)"
+            className={styles.labelContainer}
             stroke={edgeLabelColor}
             strokeWidth="0.8"
-            strokeOpacity="0.6"
           />
           <text
             x={midX}
             y={midY + 3}
             textAnchor="middle"
             fontSize="9"
-            fontFamily="'JetBrains Mono', 'Cascadia Code', monospace"
-            fontWeight="700"
             fill={edgeLabelColor}
-            letterSpacing="0.04em"
+            className={styles.labelText}
           >
             {edgeLabelText}
           </text>
@@ -181,4 +170,5 @@ export function FlowEdge({
       )}
     </g>
   );
-}
+}, areEqual);
+FlowEdge.displayName = "FlowEdge";
