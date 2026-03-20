@@ -178,29 +178,38 @@ function GraphCanvas() {
   const isDraggingRef = useRef(false);
   const userInteractedRef = useRef(false);
   const sessionManager = useRef<Record<string, { autoCentered: boolean; userInteracted: boolean }>>({});
+  
+  // 用于追踪由于尺寸变化需要重新布局的标志
+  const [layoutTriggerStamp, setLayoutTriggerStamp] = useState(0);
+  const dimensionsCacheRef = useRef<Record<string, { w: number, h: number }>>({});
 
-  // 2. 响应式同步：全局 nodes 变化时立即更新 localNodes，确保状态（success/fail）和新节点秒出
+  // 2. 响应式同步：全局 nodes 变化时立即更新 localNodes，确保状态秒出，同时隐藏未布局的新节点
   useEffect(() => {
     if (isDraggingRef.current) return;
 
     setLocalNodes(nds => {
       return nodes.map(n => {
         const existing = nds.find(ln => ln.id === n.id);
+        const isNewNode = !existing;
+        
         return {
           ...n,
           type: 'semantic',
-          // 如果本地已有且已布局，保留其位置；新节点则使用原始位置 (0,0) 等待后续布局
-          position: existing?.position ?? n.position
+          // 关键修复：如果本地已有，保留其位置和可见性；新节点初始隐藏并等待布局，防止在 (0,0) 闪烁
+          position: existing?.position ?? n.position,
+          hidden: isNewNode ? true : existing?.hidden,
+          width: existing?.width,
+          height: existing?.height,
         };
       });
     });
   }, [nodes]);
 
-  // 3. 布局就绪逻辑：仅更新坐标，不干扰节点存在
+  // 3. 布局就绪逻辑：更新坐标，解除隐藏
   const handleLayoutReady = useCallback((layouted: Node[]) => {
     setLocalNodes(nds => nds.map(n => {
       const match = layouted.find(l => l.id === n.id);
-      return match ? { ...n, position: match.position } : n;
+      return match ? { ...n, position: match.position, hidden: false } : n;
     }));
 
     // 4. 视角管理中心
@@ -291,15 +300,20 @@ function GraphCanvas() {
     };
   }, [applyEnvelope]);
 
-  // 6. Dagre 布局：增加全量依赖，修复重叠
+  // 6. Dagre 布局：增加全量依赖及尺寸触发器
   useEffect(() => {
-    if (isDraggingRef.current || !activeDagId || nodes.length === 0) return;
+    if (isDraggingRef.current || !activeDagId || localNodes.length === 0) return;
+
+    // 传给布局引擎时，携带本地捕获到的真实 width/height
+    const layoutInputNodes = localNodes.map(n => ({
+      ...n,
+      width: n.width ?? 240,
+      height: n.height ?? 72
+    }));
 
     layoutCancelRef.current = false;
-    const semanticNodes = nodes.map((node) => ({ ...node, type: "semantic" })) as Node<GraphNodeData>[];
-
     const timer = window.setTimeout(() => {
-      void applyDagreLayoutAsync(semanticNodes as Node[], edges as Edge[], "TB", new Set(lockedNodeIds)).then(
+      void applyDagreLayoutAsync(layoutInputNodes as Node[], edges as Edge[], "TB", new Set(lockedNodeIds)).then(
         (result) => {
           if (!layoutCancelRef.current) {
             handleLayoutReady(result);
@@ -311,7 +325,7 @@ function GraphCanvas() {
       window.clearTimeout(timer);
       layoutCancelRef.current = true;
     };
-  }, [nodes.length, edges.length, activeDagId, handleLayoutReady, lockedNodeIds.length]);
+  }, [nodes.length, edges.length, activeDagId, handleLayoutReady, lockedNodeIds.length, layoutTriggerStamp]);
 
   useEffect(() => {
     if (!pendingApprovalNodeId) return;
@@ -327,7 +341,30 @@ function GraphCanvas() {
   }, [pendingApprovalNodeId, activeDagId, fitView, selectNode, localNodes]);
 
   const onNodesChange = (changes: NodeChange[]) => {
-    setLocalNodes((nds) => applyNodeChanges(changes, nds));
+    let needsRelayout = false;
+
+    setLocalNodes((nds) => {
+      const nextNodes = applyNodeChanges(changes, nds);
+      
+      // 拦截尺寸变化，检测高度是否发生显著改变以触发重排
+      changes.forEach(change => {
+        if (change.type === 'dimensions' && change.dimensions) {
+          const { width, height } = change.dimensions;
+          const cached = dimensionsCacheRef.current[change.id];
+          
+          if (!cached || Math.abs(cached.h - height) > 20 || Math.abs(cached.w - width) > 20) {
+            dimensionsCacheRef.current[change.id] = { w: width, h: height };
+            needsRelayout = true;
+          }
+        }
+      });
+
+      return nextNodes;
+    });
+
+    if (needsRelayout && !isDraggingRef.current) {
+      setLayoutTriggerStamp(Date.now());
+    }
     
     // 用户手动操作，锁定自动视角
     if (activeDagId && changes.some(c => c.type === 'position' || c.type === 'select')) {
@@ -336,8 +373,7 @@ function GraphCanvas() {
       }
     }
 
-    const needsGlobalSync = changes.some((c) => c.type !== "position");
-    if (needsGlobalSync) {
+    if (changes.some((c) => c.type !== "position")) {
       applyActiveNodeChanges(changes);
     }
   };

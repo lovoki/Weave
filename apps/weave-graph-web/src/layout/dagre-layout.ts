@@ -6,8 +6,8 @@
 import dagre from "dagre";
 import type { Edge, Node } from "reactflow";
 
-const NODE_WIDTH = 240;
-const NODE_HEIGHT = 72;
+const DEFAULT_NODE_WIDTH = 240;
+const DEFAULT_NODE_HEIGHT = 72;
 
 export function applyDagreLayout(
   nodes: Node[],
@@ -20,7 +20,9 @@ export function applyDagreLayout(
   graph.setGraph({ rankdir: direction, ranksep: 80, nodesep: 40 });
 
   for (const node of nodes) {
-    graph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    const width = node.width ?? DEFAULT_NODE_WIDTH;
+    const height = node.height ?? DEFAULT_NODE_HEIGHT;
+    graph.setNode(node.id, { width, height });
   }
 
   for (const edge of edges) {
@@ -39,11 +41,14 @@ export function applyDagreLayout(
       return node;
     }
 
+    const width = node.width ?? DEFAULT_NODE_WIDTH;
+    const height = node.height ?? DEFAULT_NODE_HEIGHT;
+
     return {
       ...node,
       position: {
-        x: positioned.x - NODE_WIDTH / 2,
-        y: positioned.y - NODE_HEIGHT / 2
+        x: positioned.x - width / 2,
+        y: positioned.y - height / 2
       }
     };
   });

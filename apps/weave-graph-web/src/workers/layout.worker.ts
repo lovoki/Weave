@@ -4,12 +4,14 @@
 
 import dagre from "dagre";
 
-const NODE_WIDTH = 240;
-const NODE_HEIGHT = 72;
+const DEFAULT_NODE_WIDTH = 240;
+const DEFAULT_NODE_HEIGHT = 72;
 
 interface NodeLike {
   id: string;
   position?: { x: number; y: number };
+  width?: number;
+  height?: number;
   data?: unknown;
   [key: string]: unknown;
 }
@@ -37,7 +39,9 @@ self.onmessage = (event: MessageEvent<WorkerInput>) => {
   graph.setGraph({ rankdir: direction, ranksep: 80, nodesep: 40 });
 
   for (const node of nodes) {
-    graph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    const width = node.width ?? DEFAULT_NODE_WIDTH;
+    const height = node.height ?? DEFAULT_NODE_HEIGHT;
+    graph.setNode(node.id, { width, height });
   }
 
   for (const edge of edges) {
@@ -58,11 +62,14 @@ self.onmessage = (event: MessageEvent<WorkerInput>) => {
       return node;
     }
 
+    const width = node.width ?? DEFAULT_NODE_WIDTH;
+    const height = node.height ?? DEFAULT_NODE_HEIGHT;
+
     return {
       ...node,
       position: {
-        x: positioned.x - NODE_WIDTH / 2,
-        y: positioned.y - NODE_HEIGHT / 2
+        x: positioned.x - width / 2,
+        y: positioned.y - height / 2
       }
     };
   });
