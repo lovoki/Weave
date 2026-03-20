@@ -165,41 +165,90 @@ function GraphCanvas() {
   const applyEnvelope = useGraphStore((s) => s.applyEnvelope);
   const pendingApprovalNodeId = useGraphStore((s) => s.pendingApprovalNodeId);
 
-  const { setCenter, fitView } = useReactFlow();
+  const { fitView } = useReactFlow();
 
   const activeDag = activeDagId ? dags[activeDagId] : undefined;
-  const edges = activeDag?.edges ?? [];
-  const lockedNodeIds = activeDag?.lockedNodeIds ?? [];
+  const nodes = useMemo(() => activeDag?.nodes ?? [], [activeDag?.nodes]);
+  const edges = useMemo(() => activeDag?.edges ?? [], [activeDag?.edges]);
+  const lockedNodeIds = useMemo(() => activeDag?.lockedNodeIds ?? [], [activeDag?.lockedNodeIds]);
   const selectedNodeId = activeDag?.selectedNodeId;
-  const [layoutedNodes, setLayoutedNodes] = useState<Node<GraphNodeData>[]>([]);
 
+  // 1. 核心状态：本地节点与视角控制状态
   const [localNodes, setLocalNodes] = useState<Node<GraphNodeData>[]>([]);
   const isDraggingRef = useRef(false);
+  const userInteractedRef = useRef(false);
+  const sessionManager = useRef<Record<string, { autoCentered: boolean; userInteracted: boolean }>>({});
 
+  // 2. 响应式同步：全局 nodes 变化时立即更新 localNodes，确保状态（success/fail）和新节点秒出
   useEffect(() => {
     if (isDraggingRef.current) return;
-    const nodes = activeDag?.nodes ?? [];
-    const semanticNodes = nodes.map((node) => ({ ...node, type: "semantic" })) as Node<GraphNodeData>[];
-    if (layoutedNodes.length > 0) {
-      setLocalNodes(layoutedNodes);
-    } else {
-      setLocalNodes(semanticNodes);
+
+    setLocalNodes(nds => {
+      return nodes.map(n => {
+        const existing = nds.find(ln => ln.id === n.id);
+        return {
+          ...n,
+          type: 'semantic',
+          // 如果本地已有且已布局，保留其位置；新节点则使用原始位置 (0,0) 等待后续布局
+          position: existing?.position ?? n.position
+        };
+      });
+    });
+  }, [nodes]);
+
+  // 3. 布局就绪逻辑：仅更新坐标，不干扰节点存在
+  const handleLayoutReady = useCallback((layouted: Node[]) => {
+    setLocalNodes(nds => nds.map(n => {
+      const match = layouted.find(l => l.id === n.id);
+      return match ? { ...n, position: match.position } : n;
+    }));
+
+    // 4. 视角管理中心
+    if (activeDagId) {
+      if (!sessionManager.current[activeDagId]) {
+        sessionManager.current[activeDagId] = { autoCentered: false, userInteracted: false };
+      }
+      const state = sessionManager.current[activeDagId];
+      if (!state.userInteracted && !state.autoCentered) {
+        window.setTimeout(() => {
+          fitView({ padding: 0.3, duration: 800, maxZoom: 0.85 });
+          state.autoCentered = true;
+        }, 100);
+      }
     }
-  }, [activeDag?.nodes, layoutedNodes]);
+  }, [activeDagId, fitView]);
+
+  // 5. 切换会话时重置对焦状态，确保每次切换都能执行一次居中
+  const lastDagId = useRef(activeDagId);
+  useEffect(() => {
+    if (lastDagId.current !== activeDagId) {
+      lastDagId.current = activeDagId;
+      if (activeDagId) {
+        if (!sessionManager.current[activeDagId]) {
+          sessionManager.current[activeDagId] = { autoCentered: false, userInteracted: false };
+        } else {
+          // 关键：切换回旧会话时，重置对焦标识，允许再次触发 fitView
+          sessionManager.current[activeDagId].autoCentered = false;
+        }
+      }
+    }
+  }, [activeDagId]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const [wsStatus, setWsStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
-  const userInteractedRef = useRef(false);
   const layoutCancelRef = useRef(false);
 
+  // 4. 连线样式：拖拽时极简模式（Ghost 模式）
   const styledEdges = useMemo(() => {
     const isDragging = isDraggingRef.current;
+    if (isDragging) return []; // 拖拽时不渲染连线
+    
     return edges.map((edge) => ({
       ...edge,
       type: "flow" as const,
-      data: { ...edge.data, isDragging }
+      data: { ...edge.data, isDragging: false }
     }));
-  }, [edges, localNodes.length]); // 使用 length 触发更新，或者移除 dependency
+  }, [edges, activeDagId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -242,17 +291,18 @@ function GraphCanvas() {
     };
   }, [applyEnvelope]);
 
+  // 6. Dagre 布局：增加全量依赖，修复重叠
   useEffect(() => {
-    if (isDraggingRef.current) return;
+    if (isDraggingRef.current || !activeDagId || nodes.length === 0) return;
+
     layoutCancelRef.current = false;
-    const nodes = activeDag?.nodes ?? [];
     const semanticNodes = nodes.map((node) => ({ ...node, type: "semantic" })) as Node<GraphNodeData>[];
 
     const timer = window.setTimeout(() => {
-      void applyDagreLayoutAsync(semanticNodes as Node[], styledEdges as Edge[], "TB", new Set(lockedNodeIds)).then(
+      void applyDagreLayoutAsync(semanticNodes as Node[], edges as Edge[], "TB", new Set(lockedNodeIds)).then(
         (result) => {
           if (!layoutCancelRef.current) {
-            setLayoutedNodes(result as Node<GraphNodeData>[]);
+            handleLayoutReady(result);
           }
         }
       );
@@ -261,21 +311,7 @@ function GraphCanvas() {
       window.clearTimeout(timer);
       layoutCancelRef.current = true;
     };
-  }, [activeDag?.nodes, lockedNodeIds]);
-
-  useEffect(() => {
-    if (!activeDagId) setLayoutedNodes([]);
-  }, [activeDagId]);
-
-  useEffect(() => {
-    if (userInteractedRef.current) return;
-    const runningNode = localNodes.find(
-      (n) => n.data.status === "running" || n.data.status === "retrying"
-    );
-    if (runningNode?.position) {
-      setCenter(runningNode.position.x + 124, runningNode.position.y + 36, { zoom: 0.95, duration: 500 });
-    }
-  }, [localNodes, setCenter]);
+  }, [nodes.length, edges.length, activeDagId, handleLayoutReady, lockedNodeIds.length]);
 
   useEffect(() => {
     if (!pendingApprovalNodeId) return;
@@ -284,31 +320,41 @@ function GraphCanvas() {
     const timer = window.setTimeout(() => {
       const gateNode = localNodes.find((n) => n.id === pendingApprovalNodeId);
       if (gateNode?.position) {
-        setCenter(gateNode.position.x + 124, gateNode.position.y + 36, { zoom: 1.1, duration: 600 });
-      } else {
-        fitView({ padding: 0.2, duration: 600 });
+        fitView({ padding: 0.4, duration: 600, maxZoom: 1 });
       }
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [pendingApprovalNodeId, localNodes, selectNode, setCenter, fitView]);
+  }, [pendingApprovalNodeId, activeDagId, fitView, selectNode, localNodes]);
 
   const onNodesChange = (changes: NodeChange[]) => {
     setLocalNodes((nds) => applyNodeChanges(changes, nds));
-    const hasPositionChange = changes.some((c) => c.type === "position");
-    if (!hasPositionChange) {
+    
+    // 用户手动操作，锁定自动视角
+    if (activeDagId && changes.some(c => c.type === 'position' || c.type === 'select')) {
+      if (sessionManager.current[activeDagId]) {
+        sessionManager.current[activeDagId].userInteracted = true;
+      }
+    }
+
+    const needsGlobalSync = changes.some((c) => c.type !== "position");
+    if (needsGlobalSync) {
       applyActiveNodeChanges(changes);
     }
   };
 
   const handleDragStart = () => {
     isDraggingRef.current = true;
+    if (activeDagId && sessionManager.current[activeDagId]) {
+      sessionManager.current[activeDagId].userInteracted = true;
+    }
     document.body.classList.add('is-dragging-node');
   };
 
-  const handleDragStop = (event: any, node: any, nodes: any[]) => {
+  const handleDragStop = (_event: any, _node: any, currentNodes: Node[]) => {
     isDraggingRef.current = false;
     document.body.classList.remove('is-dragging-node');
-    applyActiveNodeChanges(nodes.map(n => ({
+    
+    applyActiveNodeChanges(currentNodes.map(n => ({
       id: n.id,
       type: 'position',
       position: n.position
@@ -317,7 +363,6 @@ function GraphCanvas() {
 
   const onPaneClick = () => {
     selectNode(undefined);
-    userInteractedRef.current = false;
   };
 
   const isCanvasEmpty = localNodes.length === 0 && !activeDagId;
@@ -405,7 +450,6 @@ function GraphCanvas() {
             onNodeDragStart={handleDragStart}
             onNodeDragStop={handleDragStop}
             onNodeClick={(_, node) => {
-              userInteractedRef.current = true;
               selectNode(node.id);
             }}
             onPaneClick={onPaneClick}
