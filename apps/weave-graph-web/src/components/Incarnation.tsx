@@ -34,7 +34,7 @@ export function Incarnation({ onSummon }: { onSummon: (text: string) => void }) 
     <div className={`incarnation-container ${isTransitioning ? 'is-transitioning' : ''}`}>
       <div className="incarnation-logo">🌌</div>
       <div className="incarnation-title">WEAVE</div>
-      <div className="incarnation-slogan">编织智能体思维，可视化无限可能</div>
+      <div className="incarnation-slogan">Visualizing Agent Workflows.</div>
       
       <div className="magic-input-wrapper">
         <div className="magic-input-inner">
@@ -50,9 +50,12 @@ export function Incarnation({ onSummon }: { onSummon: (text: string) => void }) 
             disabled={isTransitioning}
           />
           <button className="magic-send-btn" onClick={handleSummon} disabled={!inputValue.trim() || isTransitioning}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 16 8 12 22 8 8 12 2" fill="rgba(139, 92, 246, 0.15)"></polygon>
+              <polygon points="12 2 20 8 16 8 12 2"></polygon>
+              <polygon points="12 2 4 8 8 8 12 2"></polygon>
+              <polygon points="16 8 20 8 12 22 16 8"></polygon>
+              <polygon points="8 8 4 8 12 22 8 8"></polygon>
             </svg>
           </button>
         </div>

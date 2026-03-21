@@ -5,20 +5,18 @@ import { usePerformance } from '../hooks/usePerformance';
 export const CosmicBackground: React.FC = () => {
   const tier = usePerformance();
   
-  // 北斗七星 - 精确对齐中置位 (以左起第三颗星 Alioth 为中心点 500, 500)
-  // 原始坐标偏移量: dx = 20, dy = 140
+  // 北斗七星 - 黄金中置位 (X: 300-800, Y: 250-600)
   const stars = [
-    { x: 300, y: 440, id: 0 }, // 摇光
-    { x: 400, y: 460, id: 1 }, // 开阳
-    { x: 500, y: 520, id: 2 }, // 玉衡 - 正中心
-    { x: 600, y: 560, id: 3 }, // 天权
-    { x: 580, y: 690, id: 4 }, // 天玑
-    { x: 720, y: 720, id: 5 }, // 天璇
-    { x: 780, y: 590, id: 6 }  // 天枢
+    { x: 300, y: 420, id: 0 }, 
+    { x: 400, y: 440, id: 1 }, 
+    { x: 500, y: 500, id: 2 }, 
+    { x: 600, y: 540, id: 3 }, 
+    { x: 580, y: 670, id: 4 }, 
+    { x: 720, y: 700, id: 5 }, 
+    { x: 780, y: 570, id: 6 }  
   ];
 
-  // 路径：重新计算偏移后的矢量路径
-  const linePath = "M 300 440 L 400 460 L 500 520 L 600 560 L 580 690 L 720 720 L 780 590 L 600 560";
+  const linePath = "M 300 420 L 400 440 L 500 500 L 600 540 L 580 670 L 720 700 L 780 570 L 600 540";
 
   return (
     <div
@@ -32,7 +30,7 @@ export const CosmicBackground: React.FC = () => {
       }}
       className="cosmic-bg"
     >
-      {/* 1. 核心背景渐变 - 对齐屏幕中心 */}
+      {/* 1. 核心背景渐变 */}
       <div
         style={{
           position: 'absolute',
@@ -43,7 +41,7 @@ export const CosmicBackground: React.FC = () => {
         }}
       />
 
-      {/* 2. 北斗七星图腾层 */}
+      {/* 2. 北斗七星图腾层 (SVG Mask 实现生长动画) */}
       <div style={{ 
         position: 'absolute', 
         inset: 0, 
@@ -51,33 +49,47 @@ export const CosmicBackground: React.FC = () => {
         filter: 'drop-shadow(0 0 15px rgba(180, 138, 255, 0.15))' 
       }}>
         <svg width="100%" height="100%" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-          {/* 基础连线 */}
-          <path
-            className="constellation-path"
-            d={linePath}
-            fill="none"
-            stroke="rgba(255, 255, 255, 0.05)"
-            strokeWidth="0.6"
-            strokeDasharray="2 6"
-          />
-          
-          {/* 交互流光连线 */}
-          <path
-            className="constellation-active-line"
-            d={linePath}
-            fill="none"
-            stroke="rgba(180, 138, 255, 0.35)"
-            strokeWidth="1.0"
-            strokeDasharray="5 10"
-          />
+          <defs>
+            <mask id="draw-mask">
+              <path
+                className="constellation-draw-mask"
+                d={linePath}
+                fill="none"
+                stroke="white"
+                strokeWidth="20"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                pathLength="100"
+              />
+            </mask>
+          </defs>
 
-          {/* 实体星点 */}
+          {/* 基础连线 & 交互流光连线被 Mask 遮罩控制可见性 */}
+          <g mask="url(#draw-mask)">
+            <path
+              d={linePath}
+              fill="none"
+              stroke="rgba(255, 255, 255, 0.05)"
+              strokeWidth="0.6"
+              strokeDasharray="2 6"
+            />
+            <path
+              className="constellation-active-line"
+              d={linePath}
+              fill="none"
+              stroke="rgba(180, 138, 255, 0.35)"
+              strokeWidth="1.0"
+              strokeDasharray="5 10"
+            />
+          </g>
+
+          {/* 实体星点，各自带有独立的进场动画类 */}
           {stars.map((s, i) => (
-            <g key={i} className="constellation-star" style={{ "--star-index": i } as React.CSSProperties}>
-              {/* 核心亮点 */}
-              <circle cx={s.x} cy={s.y} r="1.5" fill="rgba(255, 255, 255, 0.9)" />
-              {/* 晕染层 */}
-              <circle cx={s.x} cy={s.y} r="5" fill="rgba(180, 138, 255, 0.1)" />
+            <g key={i} className="constellation-star-node" style={{ "--star-index": i } as React.CSSProperties}>
+              <g className="constellation-star">
+                <circle cx={s.x} cy={s.y} r="1.5" fill="rgba(255, 255, 255, 0.9)" />
+                <circle cx={s.x} cy={s.y} r="5" fill="rgba(180, 138, 255, 0.1)" />
+              </g>
             </g>
           ))}
         </svg>

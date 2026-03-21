@@ -120,21 +120,47 @@
     to { opacity: 1; filter: blur(0); }
   }
 
-  /* 🚀 星图交互动画 */
-  .constellation-active-line {
-    opacity: 0;
-    transition: opacity 0.6s ease, stroke-dashoffset 2s linear;
-  }
-
-  body.input-focused .constellation-active-line {
-    opacity: 1;
+  /* 🚀 星图交互动画 (Generative Drawing) */
+  .constellation-draw-mask {
+    stroke-dasharray: 100;
     stroke-dashoffset: 100;
-    animation: constellation-pulse 3s linear infinite;
+    transition: stroke-dashoffset 1.8s cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  @keyframes constellation-pulse {
-    from { stroke-dashoffset: 100; }
-    to { stroke-dashoffset: 0; }
+  body.input-focused .constellation-draw-mask {
+    stroke-dashoffset: 0;
+  }
+
+  .constellation-active-line {
+    animation: constellation-flow 3s linear infinite;
+  }
+
+  @keyframes constellation-flow {
+    to { stroke-dashoffset: -40; }
+  }
+
+  .constellation-star-node {
+    opacity: 0;
+    transform: scale(0.5);
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: opacity 0.6s cubic-bezier(0.25, 1, 0.5, 1), transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+    transition-delay: calc(var(--star-index, 0) * 0.18s);
+  }
+
+  body.input-focused .constellation-star-node {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .constellation-star {
+    animation: star-twinkle 4s ease-in-out infinite;
+    animation-delay: calc(var(--star-index, 0) * 0.5s);
+  }
+
+  @keyframes star-twinkle {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
   }
 
   /* ====== 🚀 Phase 4: 运行时微交互动画 ====== */
