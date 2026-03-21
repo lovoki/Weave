@@ -76,7 +76,7 @@
     filter: brightness(1.15);
   }
 
-  /* ====== 🚀 Phase 2: Incarnation 组件样式 ====== */
+  /* ====== 🚀 Phase 2/3: Incarnation 组件样式与优化 ====== */
   .incarnation-container {
     position: absolute;
     inset: 0;
@@ -89,73 +89,80 @@
   }
 
   .incarnation-logo {
-    font-size: 120px;
+    font-size: 180px;
     line-height: 1;
     user-select: none;
-    filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 40px rgba(168, 85, 247, 0.3));
+    filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 20px rgba(255, 255, 255, 0.1));
     transform: translateZ(0);
+    transition: all 0.5s var(--ease-out-quart);
   }
 
   .incarnation-title {
     font-family: var(--font-mono);
-    font-size: 56px;
+    font-size: 64px;
     font-weight: 800;
-    letter-spacing: 0.3em;
-    margin-top: 16px;
-    background: linear-gradient(135deg, #fff 0%, #c4b5fd 50%, #a78bfa 100%);
+    letter-spacing: 0.25em;
+    margin-top: 8px;
+    background: linear-gradient(135deg, #fff 0%, #d4d4d8 50%, #a1a1aa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
     user-select: none;
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+    transition: all 0.5s var(--ease-out-quart);
   }
 
   .incarnation-slogan {
     font-family: var(--font-ui);
-    font-size: 16px;
-    color: var(--text-secondary);
-    margin-top: 12px;
-    letter-spacing: 0.1em;
-    animation: slogan-breathe 3s ease-in-out infinite alternate;
+    font-size: 24px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    letter-spacing: 0.15em;
+    animation: slogan-breathe 4s ease-in-out infinite alternate;
+    transition: all 0.5s var(--ease-out-quart);
   }
 
   .magic-input-wrapper {
-    margin-top: 60px;
+    margin-top: 120px;
     position: relative;
     width: 600px;
     max-width: 90vw;
-    border-radius: 40px;
-    padding: 2px; /* 霓虹边框厚度 */
-    background: linear-gradient(90deg, rgba(168, 85, 247, 0.5), rgba(59, 130, 246, 0.5), rgba(16, 185, 129, 0.5), rgba(168, 85, 247, 0.5));
-    background-size: 200% 100%;
-    animation: neon-border-flow 4s linear infinite;
-    box-shadow: 0 0 30px rgba(168, 85, 247, 0.15);
-    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.3s ease;
+    border-radius: 12px;
+    padding: 1px;
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.3s ease, background 0.3s ease;
+    transform-origin: center center;
   }
 
   .magic-input-wrapper:focus-within {
     transform: scale(1.02);
-    box-shadow: 0 0 50px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.25), rgba(255,255,255,0.1));
+    background-size: 200% 100%;
+    animation: neon-border-flow 3s linear infinite;
   }
 
   .magic-input-inner {
     display: flex;
     align-items: center;
-    background: rgba(10, 10, 15, 0.85);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-radius: 38px;
-    padding: 6px 10px 6px 24px;
+    background: rgba(15, 15, 20, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 11px;
+    padding: 8px 12px 8px 20px;
+    transition: opacity 0.2s;
   }
 
   .magic-input {
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    box-shadow: none;
+    color: #F4F4F5;
     font-size: 16px;
     font-family: var(--font-ui);
-    outline: none;
+    outline: none !important;
     padding: 12px 0;
   }
 
@@ -164,23 +171,22 @@
   }
 
   .magic-send-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--color-llm), var(--color-tool));
-    border: none;
-    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: transform 0.2s var(--ease-spring), box-shadow 0.2s;
-    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
+    transition: transform 0.2s var(--ease-spring), background 0.2s, color 0.2s;
   }
 
   .magic-send-btn:hover:not(:disabled) {
-    transform: scale(1.08) rotate(-10deg);
-    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+    transform: scale(1.05);
+    background: rgba(255, 255, 255, 0.15);
   }
 
   .magic-send-btn:active:not(:disabled) {
@@ -188,17 +194,54 @@
   }
 
   .magic-send-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.3;
     cursor: not-allowed;
-    background: var(--bg-overlay);
-    box-shadow: none;
-    color: var(--text-muted);
+    background: transparent;
+    border-color: transparent;
   }
 
   .magic-send-btn svg {
     width: 18px;
     height: 18px;
-    margin-left: -2px; /* 光速飞行图标视觉居中校正 */
+    margin-left: -2px;
     margin-top: 2px;
+  }
+
+  /* 🚀 Phase 3: Incarnation 转场状态 */
+  .incarnation-container.is-transitioning .incarnation-logo,
+  .incarnation-container.is-transitioning .incarnation-title,
+  .incarnation-container.is-transitioning .incarnation-slogan {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+    pointer-events: none;
+  }
+
+  .incarnation-container.is-transitioning .incarnation-slogan {
+    animation: none !important;
+  }
+
+  .incarnation-container.is-transitioning .magic-input-wrapper {
+    animation: collapse-to-fiber 0.8s cubic-bezier(0.25, 1, 0.3, 1) forwards;
+  }
+
+  .incarnation-container.is-transitioning .magic-input-inner {
+    opacity: 0;
+  }
+
+  /* 🚀 Phase 3: 面板与画布进场动画 */
+  .panel-slide-in-left {
+    animation: slide-in-left 0.6s var(--ease-spring) 0.4s both;
+  }
+
+  .panel-slide-in-right {
+    animation: slide-in-right 0.6s var(--ease-spring) 0.4s both;
+  }
+
+  .header-slide-in-top {
+    animation: slide-in-top 0.5s var(--ease-out-quart) 0.3s both;
+  }
+
+  .canvas-fade-in {
+    animation: canvas-fade-in 0.8s var(--ease-out-quart) 0.2s both;
   }
 }
