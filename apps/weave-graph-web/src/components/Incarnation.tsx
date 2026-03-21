@@ -2,28 +2,35 @@ import React, { useState } from "react";
 
 export function Incarnation({ onSummon }: { onSummon: (text: string) => void }) {
   const [inputValue, setInputValue] = useState("");
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const handleSummon = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isTransitioning) return;
     
-    // 失去焦点，配合后续 Phase 3 过场动画
+    // 幽灵光标防范 (Ghost Cursor)
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
     
-    onSummon(inputValue);
+    setIsTransitioning(true);
+    
+    // 等待拉伸动画完成再真正进入DAG画布 (800ms)
+    setTimeout(() => {
+      onSummon(inputValue);
+    }, 800);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    // 物理防误触 (Double Submit)
+    if (e.key === "Enter" && inputValue.trim() && !isTransitioning) {
       e.preventDefault();
       handleSummon();
     }
   };
 
   return (
-    <div className="incarnation-container">
+    <div className={`incarnation-container ${isTransitioning ? 'is-transitioning' : ''}`}>
       <div className="incarnation-logo">🌌</div>
       <div className="incarnation-title">WEAVE</div>
       <div className="incarnation-slogan">编织智能体思维，可视化无限可能</div>
@@ -37,8 +44,9 @@ export function Incarnation({ onSummon }: { onSummon: (text: string) => void }) 
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
+            disabled={isTransitioning}
           />
-          <button className="magic-send-btn" onClick={handleSummon} disabled={!inputValue.trim()}>
+          <button className="magic-send-btn" onClick={handleSummon} disabled={!inputValue.trim() || isTransitioning}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"></line>
               <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>

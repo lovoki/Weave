@@ -21,6 +21,7 @@ export const Header: React.FC<{
 
   return (
     <header
+      className="header-slide-in-top"
       style={{
         gridColumn: "1 / -1",
         gridRow: 1,

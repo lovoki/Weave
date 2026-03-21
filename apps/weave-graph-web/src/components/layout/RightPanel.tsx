@@ -14,6 +14,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 }) => {
   return (
     <div
+      className="panel-slide-in-right"
       style={{
         position: "relative",
         gridRow: 2,

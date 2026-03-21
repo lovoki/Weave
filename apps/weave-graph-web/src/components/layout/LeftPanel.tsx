@@ -21,6 +21,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
 }) => {
   return (
     <div
+      className="panel-slide-in-left"
       style={{
         position: "relative",
         gridRow: 2,

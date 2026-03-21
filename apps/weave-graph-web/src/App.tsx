@@ -487,7 +487,7 @@ function GraphCanvas({ isWeavingStarted, setIsWeavingStarted }: { isWeavingStart
           />
         )}
 
-        <main className="canvas-panel" style={{ flex: 1, position: "relative", overflow: "hidden", background: "transparent" }}>
+        <main className="canvas-panel canvas-fade-in" style={{ flex: 1, position: "relative", overflow: "hidden", background: "transparent" }}>
           {!isWeavingStarted && (
             <Incarnation onSummon={(text) => {
               console.log("Summoning:", text);
