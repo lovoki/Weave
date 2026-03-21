@@ -12,6 +12,7 @@ export function Incarnation({ onSummon }: { onSummon: (text: string) => void }) 
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
+    document.body.classList.remove('input-focused');
     
     setIsTransitioning(true);
     
@@ -40,14 +41,16 @@ export function Incarnation({ onSummon }: { onSummon: (text: string) => void }) 
           <input 
             type="text" 
             className="magic-input" 
-            placeholder="给 Weave 输入一个指令，或者描述你想让 Agent 干什么..." 
+            placeholder="给 Weave 输入一个指令..." 
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={() => document.body.classList.add('input-focused')}
+            onBlur={() => document.body.classList.remove('input-focused')}
             disabled={isTransitioning}
           />
           <button className="magic-send-btn" onClick={handleSummon} disabled={!inputValue.trim() || isTransitioning}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"></line>
               <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
             </svg>

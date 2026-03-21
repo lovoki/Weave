@@ -29,7 +29,7 @@ export const commandExecTool: ToolDefinition<CommandExecArgs> = {
       },
       timeoutMs: {
         type: "number",
-        description: "可选，超时时间（毫秒），默认 15000。"
+        description: "可选，超时时间（毫秒），默认 5000。"
       }
     },
     required: ["command"],
@@ -51,7 +51,7 @@ export const commandExecTool: ToolDefinition<CommandExecArgs> = {
       };
     }
 
-    const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : 15000;
+    const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : 5000;
     const cwd = args.cwd ?? context.workspaceRoot;
     const isWindows = process.platform === "win32";
     const commandToRun = isWindows ? `chcp 65001>nul & ${args.command}` : args.command;

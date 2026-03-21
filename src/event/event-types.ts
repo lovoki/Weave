@@ -21,6 +21,7 @@ export type AgentRunEventType =
   | "engine.edge.created"
   | "engine.data.edge.created"
   | "engine.node.transition"
+  | "engine.node.stream"
   | "engine.node.io"
   | "engine.scheduler.issue"
   | "engine.node.stream.delta";

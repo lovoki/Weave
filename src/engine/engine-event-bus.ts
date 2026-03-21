@@ -30,5 +30,5 @@ export interface IEngineEventBus {
   ): void;
   onSchedulerIssue(type: "deadlock" | "integrity", message: string, nodeIds?: string[]): void;
   /** 流式文本旁路 — LLM 推理过程中逐 chunk 广播，用于 Web UI 节点实时显示 */
-  onNodeStreamDelta?(nodeId: string, chunkText: string): void;
+  onNodeStreamDelta(nodeId: string, chunkText: string): void;
 }

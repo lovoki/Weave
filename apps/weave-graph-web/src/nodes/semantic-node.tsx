@@ -111,7 +111,7 @@ const areEqual = (prev: NodeProps<GraphNodeData>, next: NodeProps<GraphNodeData>
   );
 };
 
-export const SemanticNode = memo(function SemanticNode({ data }: NodeProps<GraphNodeData>) {
+export const SemanticNode = memo(function SemanticNode({ data, selected }: NodeProps<GraphNodeData>) {
   const kind = data.kind ?? "tool";
   const status = data.status ?? "pending";
   const { Icon, color, label } = KIND_MAP[kind] ?? DEFAULT_KIND;
@@ -137,14 +137,15 @@ export const SemanticNode = memo(function SemanticNode({ data }: NodeProps<Graph
   };
 
   const cardClassName = [
+    "semantic-node-card",
     styles.nodeCard,
     styles.nodeEnter,
     status === "running" || status === "retrying" ? styles.nodeRunning : ""
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 
   return (
     <div
-      className={`node-status-${status} ${isPendingApproval ? "node-pending-approval" : ""}`}
+      className={`node-status-${status} ${isPendingApproval ? "node-pending-approval" : ""} ${selected ? "is-selected" : ""}`}
       style={{ width: 248 }}
     >
       <Handle type="target" position={Position.Top} className="node-handle" />
@@ -212,15 +213,7 @@ export const SemanticNode = memo(function SemanticNode({ data }: NodeProps<Graph
               >
                 {String(livePort.content)}
                 {status === "running" && (
-                  <span style={{ 
-                    display: "inline-block", 
-                    width: 6, 
-                    height: 12, 
-                    background: color, 
-                    marginLeft: 2,
-                    verticalAlign: "middle",
-                    animation: "blink 1s step-end infinite" 
-                  }} />
+                  <span className={styles.streamCursor} style={{ background: color }} />
                 )}
               </div>
             </div>

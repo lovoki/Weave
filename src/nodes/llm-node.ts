@@ -53,7 +53,7 @@ export class LlmNode extends BaseNode<RunContext> {
     this.systemPrompt = ctx.systemPrompt;
     this.messages = [...ctx.workingMessages];
 
-    ctx.logger.info("run.dag.step", "DAG 调度执行 LLM 节点", {
+    ctx.logger.info("run.engine.step", "DAG 调度执行 LLM 节点", {
       runId: ctx.runId,
       step: this.step,
       nodeId: this.id,
@@ -62,20 +62,8 @@ export class LlmNode extends BaseNode<RunContext> {
       modelToolCount: ctx.toolRegistry.listModelTools().length
     });
 
-    // beforeLlmRequest 插件钩子
+    // 🛡️ 架构师建议：Plugin 逻辑已上移至 Layer 3，节点不再感知插件。
     let effectiveSystemPrompt = ctx.systemPrompt;
-    for (const plugin of ctx.plugins) {
-      const changed = await plugin.beforeLlmRequest?.({
-        ...ctx.basePluginContext,
-        step: this.step,
-        systemPrompt: effectiveSystemPrompt,
-        messages: ctx.workingMessages
-      });
-      if (changed?.systemPrompt) {
-        effectiveSystemPrompt = changed.systemPrompt;
-      }
-      ctx.bus.dispatchPluginOutput(changed?.output);
-    }
 
     let assistantMessage: OpenAI.Chat.Completions.ChatCompletionMessage | undefined;
 
@@ -92,33 +80,7 @@ export class LlmNode extends BaseNode<RunContext> {
         }
       );
     } catch (error) {
-      // 🛡️ LLM 调用失败时也要闭合 Plugin 生命周期
-      for (const plugin of ctx.plugins) {
-        try {
-          await plugin.afterLlmResponse?.({
-            ...ctx.basePluginContext,
-            step: this.step,
-            assistantMessage: { role: "assistant", content: null, refusal: null } as any
-          });
-        } catch (e) {
-          ctx.logger?.warn("plugin.after_llm.error", `Plugin afterLlmResponse 异常: ${e}`);
-        }
-      }
       throw error;
-    }
-
-    // 🛡️ try/finally 闭合 Plugin 生命周期（正常路径）
-    for (const plugin of ctx.plugins) {
-      try {
-        const output = await plugin.afterLlmResponse?.({
-          ...ctx.basePluginContext,
-          step: this.step,
-          assistantMessage
-        });
-        ctx.bus.dispatchPluginOutput(output);
-      } catch (e) {
-        ctx.logger?.warn("plugin.after_llm.error", `Plugin afterLlmResponse 异常: ${e}`);
-      }
     }
 
     // 更新可视化数据

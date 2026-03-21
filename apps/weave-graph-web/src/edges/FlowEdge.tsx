@@ -26,12 +26,12 @@ export const FlowEdge = memo(function FlowEdge({
   targetPosition,
   data,
 }: EdgeProps) {
-  // 从局部 store 获取节点状态，避免 App.tsx 的全局映射
-  const targetNode = useStore(
-    (s) => s.nodeInternals.get(target)
-  );
+  // 从局部 store 获取节点状态
+  const targetNode = useStore((s) => s.nodeInternals.get(target));
+  const sourceNode = useStore((s) => s.nodeInternals.get(source));
   
   const status = targetNode?.data?.status;
+  const isFocused = targetNode?.selected || sourceNode?.selected;
 
   const [edgePath] = getBezierPath({
     sourceX,
@@ -47,13 +47,13 @@ export const FlowEdge = memo(function FlowEdge({
   const arrowId = `arrow-${id}`;
   
   // 核心样式逻辑局部化
-  let strokeColor = "var(--border-muted)";
-  if (status === "success") strokeColor = "rgba(61, 198, 83, 0.22)";
+  let strokeColor = isFocused ? "rgba(180, 138, 255, 0.8)" : "var(--border-muted)";
+  if (status === "success") strokeColor = isFocused ? "rgba(61, 198, 83, 0.8)" : "rgba(61, 198, 83, 0.22)";
   else if (status === "fail") strokeColor = "rgba(255, 96, 87, 0.7)";
   else if (status === "running" || status === "retrying") strokeColor = "rgba(90, 173, 255, 0.95)";
   else if (status === "skipped") strokeColor = "rgba(90, 102, 120, 0.35)";
 
-  const isAnimated = status === "running" || status === "retrying";
+  const isAnimated = status === "running" || status === "retrying" || isFocused;
   const isFail = status === "fail";
   const strokeWidth = isAnimated ? 1.7 : 1.4;
 
@@ -81,12 +81,12 @@ export const FlowEdge = memo(function FlowEdge({
         >
           <path
             d="M0,0 L0,6 L8,3 z"
-            fill={isAnimated ? "#b48aff" : strokeColor}
+            fill={isAnimated ? (isFocused ? "#b48aff" : strokeColor) : strokeColor}
             opacity={isAnimated ? 0.85 : 0.6}
           />
         </marker>
 
-        {isAnimated && (
+        {(isAnimated || isFocused) && (
           <>
             <linearGradient
               id={gradientId}
@@ -100,7 +100,7 @@ export const FlowEdge = memo(function FlowEdge({
             </linearGradient>
 
             <filter id={`track-glow-${id}`} x="-60%" y="-60%" width="220%" height="220%">
-              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feGaussianBlur stdDeviation={isFocused ? "3" : "2"} result="blur" />
               <feMerge>
                 <feMergeNode in="blur" />
                 <feMergeNode in="SourceGraphic" />
@@ -114,9 +114,9 @@ export const FlowEdge = memo(function FlowEdge({
         <path
           d={edgePath}
           fill="none"
-          strokeWidth={strokeWidth + 0.5}
-          stroke={`url(#${gradientId})`}
-          opacity={0.35}
+          strokeWidth={strokeWidth + (isFocused ? 0.8 : 0.5)}
+          stroke={isFocused ? `url(#${gradientId})` : strokeColor}
+          opacity={isFocused ? 0.6 : 0.35}
           filter={`url(#track-glow-${id})`}
           markerEnd={`url(#${arrowId})`}
           className={styles.edgeGlow}
@@ -135,11 +135,11 @@ export const FlowEdge = memo(function FlowEdge({
 
       {isAnimated && (
         <circle
-          r="2"
+          r={isFocused ? 2.5 : 2}
           className={styles.starParticle}
           style={{
             offsetPath: `path('${edgePath}')`,
-            animation: `comet-flow 2s linear infinite`,
+            animation: `${isFocused ? 'fast-comet-flow' : 'comet-flow'} ${isFocused ? '1.2s' : '2s'} linear infinite`,
           } as any}
         />
       )}

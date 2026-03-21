@@ -41,7 +41,7 @@ export class FinalNode extends BaseNode<RunContext> {
     this.responseText = finalText;
 
     // 流式输出
-    await ctx.emitTextAsStream(finalText);
+    // await ctx.emitTextAsStream(finalText);
 
     // 记录到状态存储（dag-executor 读取此值作为返回结果）
     ctx.stateStore.setRunValue("finalText", finalText);

@@ -35,6 +35,7 @@ import type { RunContext, StepGateOptions } from "../session/run-context.js";
 import { PendingPromiseRegistry } from "../weave/pending-promise-registry.js";
 import { StepGateInterceptor } from "../weave/step-gate-interceptor.js";
 import { SnapshotStore } from "../engine/snapshot-store.js";
+import { PluginManager } from "./plugin-manager.js";
 import * as path from "node:path";
 
 // 从 event-types 重新导出，保持向后兼容
@@ -257,17 +258,8 @@ export class AgentRuntime extends EventEmitter {
       (evt) => this.emit("event", evt)
     );
 
-    // 创建流式文本输出方法（闭包引用 bus 和 chunk 配置）
-    const emitTextAsStream = async (text: string): Promise<void> => {
-      if (!text) return;
-      const chunks = this.splitText(text, this.streamChunkSize);
-      for (const chunk of chunks) {
-        bus.dispatch("llm.delta", { text: chunk });
-        if (this.streamChunkDelayMs > 0) {
-          await this.sleep(this.streamChunkDelayMs);
-        }
-      }
-    };
+    // 👑 挂载插件管家（Layer 3 旁路观察者）
+    new PluginManager(bus, plugins);
 
     // Phase 2：全局 AbortController
     const abortController = new AbortController();
@@ -295,7 +287,6 @@ export class AgentRuntime extends EventEmitter {
       runId,
       sessionId: this.sessionId,
       turnIndex: this.turnIndex,
-      bus,
       llmClient: this.llmClient,
       toolRegistry: this.toolRegistry,
       memoryStore: this.memoryStore,
@@ -304,14 +295,11 @@ export class AgentRuntime extends EventEmitter {
       nodeRegistry,
       workingMessages,
       systemPrompt,
-      plugins,
-      basePluginContext,
       stepGate,
       defaultToolRetries: stepGate.autoMode === true ? getDefaultToolRetries() : 0,
       defaultToolTimeoutMs: getDefaultToolTimeoutMs(),
       logger: this.logger,
       maxSteps: MAX_AGENT_STEPS,
-      emitTextAsStream,
       abortController,
       abortSignal: abortController.signal,
       interceptor,

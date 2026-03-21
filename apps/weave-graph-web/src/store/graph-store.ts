@@ -175,8 +175,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             target: payload.target,
             label: payload.label,
             data: payload.edgeKind ? { edgeKind: payload.edgeKind } : undefined,
-            style: payload.edgeKind === "retry" ? { strokeDasharray: "4 4", stroke: "#f59e0b" } : undefined,
-            animated: payload.edgeKind === "data"
+            style: payload.edgeKind === "retry" ? { strokeDasharray: "4 4", stroke: "#f59e0b" } : undefined
           });
         }
       }

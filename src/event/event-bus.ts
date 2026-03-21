@@ -1,6 +1,7 @@
 /**
  * 文件作用：WeaveEventBus — 统一事件分发总线，自动注入 runId/sessionId/turnIndex 元数据。
  */
+import { EventEmitter } from "node:events";
 import type { AgentRunEventType, AgentRunEvent } from "./event-types.js";
 import type { AgentPluginOutput, AgentPluginOutputs } from "../agent/plugins/agent-plugin.js";
 
@@ -10,7 +11,7 @@ export interface EventBusMeta {
   turnIndex: number;
 }
 
-export class WeaveEventBus {
+export class WeaveEventBus extends EventEmitter {
   readonly runId: string;
   readonly sessionId: string;
   readonly turnIndex: number;
@@ -19,6 +20,7 @@ export class WeaveEventBus {
     private readonly meta: EventBusMeta,
     private readonly forward: (e: AgentRunEvent) => void
   ) {
+    super();
     this.runId = meta.runId;
     this.sessionId = meta.sessionId;
     this.turnIndex = meta.turnIndex;
@@ -34,6 +36,7 @@ export class WeaveEventBus {
       eventType: type,
       payload
     };
+    this.emit(type, event);
     this.forward(event);
   }
 

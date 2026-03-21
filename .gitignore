@@ -7,3 +7,7 @@ sessions/
 *.run.log
 dagent\logs
 dagent\.dagent
+CLAUDE.md
+GEMINI.md
+.claude\
+.dagent\

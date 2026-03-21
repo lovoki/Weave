@@ -1,5 +1,8 @@
 # Dagent - Gemini Context
 
+## Gemini
+用中文输出！！
+
 ## Project Overview
 
 **Dagent** is a TypeScript-based CLI Agent project designed to provide an observable, controllable, and extensible multi-turn conversation experience in the terminal.

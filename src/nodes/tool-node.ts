@@ -1,26 +1,27 @@
 /**
  * 文件作用：ToolNode — 表示一次工具调用节点。
- * doExecute() 内部包含完整重试链，try/finally 保证 Plugin 生命周期闭合。
+ * doExecute() 内部包含完整重试链。
  * Step Gate 审批已抽离到 BaseNode 模板方法 + INodeInterceptor。
  * doExecute() 只能 return（成功）或 throw（失败），状态由模板方法收口。
+ *
+ * 🛡️ 架构师建议：彻底静默节点。物理抹除所有 ctx.bus.dispatch 和插件调用。
+ * 业务语义（如 onToolStart）由 Layer 3 插件管家监听物理状态变更推断。
  */
 
 import type { NodeKind, GraphPort } from "./node-types.js";
 import { BaseNode } from "./base-node.js";
 import { RepairNode } from "./repair-node.js";
-import { EscalationNode } from "./escalation-node.js";
 import type { RunContext } from "../session/run-context.js";
 import { executeToolWithTimeout } from "../agent/tool-executor.js";
 import { repairToolArgsByIntent } from "../agent/tool-executor.js";
-import { summarizeText, safeJsonStringify } from "../utils/text-utils.js";
+import { summarizeText } from "../utils/text-utils.js";
 import type { ToolExecuteResult } from "../tools/tool-types.js";
 
 export interface ToolNodeInit {
   toolName: string;
   toolCallId: string;
   args: Record<string, unknown>;
-  /** LLM 输出文本（thinking），用作工具意图说明 */
-  // todo: 不是LLM输出的文本，而是工具的intent字段
+  /** 工具意图说明 */
   intent?: string;
   maxRetries: number;
   step: number;
@@ -75,7 +76,6 @@ export class ToolNode extends BaseNode<RunContext> {
     const toolDef = ctx.toolRegistry.resolve(this.toolName);
     if (!toolDef?.inputSchema) return { ok: true };
 
-    // 基础类型校验：检查 required 字段
     const schema = toolDef.inputSchema as Record<string, unknown>;
     const required = (schema.required ?? []) as string[];
     const errors: string[] = [];
@@ -93,54 +93,9 @@ export class ToolNode extends BaseNode<RunContext> {
     this.effectiveArgs = args;
   }
 
-  /** 拦截器 skip 时：闭合 Plugin 钩子 + 写入 workingMessages */
+  /** 拦截器 skip 时：写入 workingMessages */
   protected async onSkipped(ctx: RunContext): Promise<void> {
-    const effectiveArgs = this.getEffectiveArgs();
     const skipResult = { ok: false, content: "[SKIPPED by approval gate]", metadata: { skippedByUser: true } };
-
-    for (const plugin of ctx.plugins) {
-      const output = await plugin.beforeToolExecution?.({
-        ...ctx.basePluginContext,
-        step: this.step,
-        toolName: this.toolName,
-        toolCallId: this.toolCallId,
-        args: effectiveArgs,
-        intentSummary: this.intent,
-        attempt: 1,
-        maxRetries: 0
-      });
-      ctx.bus.dispatchPluginOutput(output);
-    }
-    for (const plugin of ctx.plugins) {
-      try {
-        const output = await plugin.afterToolExecution?.({
-          ...ctx.basePluginContext,
-          step: this.step,
-          toolName: this.toolName,
-          toolCallId: this.toolCallId,
-          args: effectiveArgs,
-          result: skipResult,
-          intentSummary: this.intent,
-          attempt: 1,
-          totalAttempts: 1,
-          wasRepaired: false,
-          allFailed: true
-        });
-        ctx.bus.dispatchPluginOutput(output);
-      } catch (pluginError) {
-        ctx.logger?.warn("plugin.after_tool.error", `Plugin afterToolExecution 异常: ${pluginError}`);
-      }
-    }
-
-    ctx.bus.dispatch("tool.execution.end", {
-      sessionId: ctx.sessionId,
-      turnIndex: ctx.turnIndex,
-      toolName: this.toolName,
-      toolCallId: this.toolCallId,
-      toolOk: false,
-      toolStatus: "fail",
-      toolResultText: "[SKIPPED]"
-    });
 
     ctx.workingMessages.push({
       role: "tool",
@@ -152,45 +107,13 @@ export class ToolNode extends BaseNode<RunContext> {
   }
 
   /**
-   * 纯业务逻辑 — try/finally 保证 Plugin 生命周期闭合。
-   * 成功 return，失败 throw，状态由 BaseNode 模板方法收口。
+   * 纯业务逻辑 — 成功 return，失败 throw，状态由 BaseNode 模板方法收口。
    */
   protected async doExecute(ctx: RunContext): Promise<void> {
     let effectiveArgs = this.getEffectiveArgs();
     let finalResult: ToolExecuteResult | undefined;
     let attempt = 1;
     let executionError: Error | undefined;
-
-    const totalAttempts = this.maxRetries + 1;
-
-    const pluginCtx = {
-      ...ctx.basePluginContext,
-      step: this.step,
-      toolName: this.toolName,
-      toolCallId: this.toolCallId,
-      args: effectiveArgs,
-      intentSummary: this.intent,
-      attempt: 1,
-      maxRetries: this.maxRetries
-    };
-
-    ctx.bus.dispatch("tool.execution.start", {
-      sessionId: ctx.sessionId,
-      turnIndex: ctx.turnIndex,
-      toolName: this.toolName,
-      toolCallId: this.toolCallId,
-      toolArgsText: summarizeText(effectiveArgs),
-      toolArgsJsonText: safeJsonStringify(effectiveArgs)
-    });
-
-    // 🛡️ before 钩子
-    for (const p of ctx.plugins) {
-      const output = await p.beforeToolExecution?.({
-        ...pluginCtx,
-        args: effectiveArgs
-      });
-      ctx.bus.dispatchPluginOutput(output);
-    }
 
     try {
       // 第一次执行
@@ -210,21 +133,11 @@ export class ToolNode extends BaseNode<RunContext> {
 
       let prevNodeId = this.id;
 
-      // 重试循环（保留在内部）
+      // 重试循环
       while (!finalResult.ok && attempt <= this.maxRetries) {
         ctx.abortSignal?.throwIfAborted();
 
-        ctx.bus.dispatch("tool.retry.start", {
-          sessionId: ctx.sessionId,
-          turnIndex: ctx.turnIndex,
-          toolName: this.toolName,
-          toolCallId: this.toolCallId,
-          retryAttempt: attempt,
-          retryMax: this.maxRetries,
-          retryReason: summarizeText(finalResult.content)
-        });
-
-        // 创建 RepairNode（加入 DAG 可视化，已完成态，外部调度器不会调度）
+        // 创建 RepairNode（可视化）
         const repairNode = new RepairNode(`repair-${this.id}-${attempt}`, {
           lastError: summarizeText(finalResult.content, 300),
           originalArgs: effectiveArgs
@@ -254,30 +167,8 @@ export class ToolNode extends BaseNode<RunContext> {
         repairNode.broadcastIo(ctx);
         prevNodeId = repairNode.id;
 
-        ctx.bus.dispatch("tool.retry.end", {
-          sessionId: ctx.sessionId,
-          turnIndex: ctx.turnIndex,
-          toolName: this.toolName,
-          toolCallId: this.toolCallId,
-          retryAttempt: attempt,
-          retryMax: this.maxRetries,
-          retryPrepared: repairResult.repairedArgs !== null
-        });
-
         effectiveArgs = repairedArgs;
         attempt++;
-
-        // 重试前的 before 钩子
-        for (const p of ctx.plugins) {
-          const output = await p.beforeToolExecution?.({
-            ...pluginCtx,
-            args: effectiveArgs,
-            attempt,
-            previousError: summarizeText(finalResult.content, 300),
-            repairedFrom: { ...this.args }
-          });
-          ctx.bus.dispatchPluginOutput(output);
-        }
 
         finalResult = await executeToolWithTimeout(
           ctx.toolRegistry,
@@ -293,7 +184,7 @@ export class ToolNode extends BaseNode<RunContext> {
           ctx.logger
         );
 
-        // 创建 RetryToolNode 记录本次重试结果（可视化用，外部调度器不会调度）
+        // 创建 Retry 记录（可视化）
         const retryNode = new ToolNode(`retry-${this.id}-${attempt}`, {
           toolName: this.toolName,
           toolCallId: this.toolCallId,
@@ -316,60 +207,11 @@ export class ToolNode extends BaseNode<RunContext> {
         retryNode.broadcastIo(ctx);
         prevNodeId = retryNode.id;
       }
-
-      // 重试耗尽仍失败 → 添加 EscalationNode（可视化）
-      if (!finalResult.ok && this.maxRetries > 0) {
-        ctx.bus.dispatch("tool.retry.end", {
-          sessionId: ctx.sessionId,
-          turnIndex: ctx.turnIndex,
-          toolName: this.toolName,
-          toolCallId: this.toolCallId,
-          retryAttempt: attempt,
-          retryMax: this.maxRetries,
-          retryPrepared: false,
-          retryReason: "重试次数已耗尽"
-        });
-
-        // 不需要真正的 EscalationNode 实例了，直接在 DAG 上显示失败节点
-        // const escalNode = new EscalationNode(`escalation-${this.id}`, this.toolName, this.id);
-        // ctx.dag.addNode({ id: escalNode.id, type: "escalation", status: "fail" });
-        // ctx.dag.addEdge(prevNodeId, escalNode.id);
-      }
     } catch (error: any) {
       executionError = error;
-      throw error; // 继续抛给 BaseNode 模板方法
+      throw error;
     } finally {
-      // 🛡️ 无论成功、失败还是 Abort，after 钩子绝对执行！
-      // 确保监控系统的 Span 被正确闭合，不留悬空 Trace
-      for (const p of ctx.plugins) {
-        try {
-          const output = await p.afterToolExecution?.({
-            ...pluginCtx,
-            args: effectiveArgs,
-            result: finalResult ?? { ok: false, content: executionError?.message ?? "unknown" },
-            attempt,
-            totalAttempts,
-            wasRepaired: attempt > 1,
-            allFailed: finalResult ? !finalResult.ok : true
-          });
-          ctx.bus.dispatchPluginOutput(output);
-        } catch (pluginError) {
-          // Plugin 自身异常不应阻断主流程
-          ctx.logger?.warn("plugin.after_tool.error", `Plugin afterToolExecution 异常: ${pluginError}`);
-        }
-      }
-
-      ctx.bus.dispatch("tool.execution.end", {
-        sessionId: ctx.sessionId,
-        turnIndex: ctx.turnIndex,
-        toolName: this.toolName,
-        toolCallId: this.toolCallId,
-        toolOk: finalResult?.ok ?? false,
-        toolStatus: finalResult?.ok ? "success" : "fail",
-        toolResultText: summarizeText(finalResult?.content ?? executionError?.message ?? "unknown")
-      });
-
-      // 写入 workingMessages + stateStore（无论成功失败都需要）
+      // 写入 workingMessages + stateStore
       if (finalResult) {
         ctx.workingMessages.push({
           role: "tool",
@@ -389,13 +231,10 @@ export class ToolNode extends BaseNode<RunContext> {
       }
     }
 
-    // 决定 return 或 throw — 模板方法接管状态
     if (finalResult?.ok) {
-      return; // → BaseNode markSuccess
+      return; 
     } else {
-      throw new ToolExecutionError(
-        String(finalResult?.content ?? "工具执行异常")
-      );
+      throw new ToolExecutionError(String(finalResult?.content ?? "工具执行异常"));
     }
   }
 
@@ -426,7 +265,6 @@ export class ToolNode extends BaseNode<RunContext> {
   }
 }
 
-/** 工具执行失败错误（doExecute 内部抛出，BaseNode 模板方法捕获） */
 class ToolExecutionError extends Error {
   constructor(message: string) {
     super(message);

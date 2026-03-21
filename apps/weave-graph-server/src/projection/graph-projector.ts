@@ -162,6 +162,24 @@ export class GraphProjector {
       }
     }
 
+    if (event.type === "engine.node.stream.delta") {
+      const nodeId = this.stringValue(event.payload?.nodeId);
+      const delta = this.stringValue(event.payload?.chunkText);
+      if (nodeId && delta) {
+        out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+          nodeId,
+          outputPorts: [
+            {
+              name: "live_stream",
+              type: "text",
+              content: delta,
+              metadata: { is_delta: true }
+            }
+          ]
+        }));
+      }
+    }
+
     if (event.type === "engine.scheduler.issue") {
       // 调度器死锁/完整性问题 — 记录为系统节点（前端可展示警告）
       const issueType = this.stringValue(event.payload?.issueType);
