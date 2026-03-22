@@ -108,12 +108,11 @@ dagent/
   - 忽略本地密钥和构建产物。
 
 ### 配置文件
-- `config/llm.config.template.json`
   - 模型配置模板，供复制后按需修改。
   - 同时支持配置文件直写密钥（`apiKey`）和环境变量读取（`apiKeyEnv`）。
 - `config/llm.config.json`
+  - 新增恢复链路一键回归入口：`verify:recovery-all`（逻辑级 + 网关级）。
   - 应用实际运行时读取的配置文件。
-
 ### 记忆文件
 - `memories/SOUL.md`
   - 存放 Agent 系统行为与风格语气（包含原系统提示词内容）。

@@ -2768,3 +2768,31 @@
 
 #### 下一步
 引入浏览器端 E2E（建议 Playwright）覆盖真实页面断线重连与恢复链路。
+
+### 2026-03-22 - Entry 2026-03-22-L - 恢复链路一键回归入口（第十四阶段）
+
+#### 范围
+将分散的恢复验证脚本收敛为一条根命令，确保每轮改动后可一键执行完整恢复回归。
+
+#### 改动
+- 根命令新增：
+  - `package.json` 新增 `verify:recovery-all`。
+  - 串联如下验证：
+    - `verify:graph-recovery`
+    - `verify:rpc-pending`
+    - `verify:ws-recovery-controller`
+    - `weave-graph-server/verify:gateway-rpc`
+    - `weave-graph-server/verify:gateway-reconnect`
+
+#### 影响文件
+- package.json
+
+#### 验证
+- `pnpm verify:recovery-all` 通过。
+  - 输出显示五段验证全部通过，覆盖逻辑级、控制器级、网关级恢复语义。
+
+#### 待解决问题
+- 一键回归仍未覆盖浏览器真实页面 E2E（仅覆盖逻辑与协议级）。
+
+#### 下一步
+在 `verify:recovery-all` 之上补浏览器 E2E 用例并按条件接入（可选开关），实现端到端完整闭环。
