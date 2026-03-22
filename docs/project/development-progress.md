@@ -9,6 +9,24 @@
 
 ## 进度记录
 
+### 2026-03-22 - Entry 073 - 修复 Missing API key（apiKeyEnv 误填密钥值）
+
+#### 范围
+`config/llm.config.json`、`src/infrastructure/config/load-llm-config.ts`
+
+#### 改动
+- 将 `llm.config.json` 中 `apiKeyEnv` 从误填的密钥字符串修正为环境变量名 `QWEN_API_KEY`。
+- 在 `load-llm-config.ts` 增加防呆校验：当 `apiKeyEnv` 以 `sk-` 开头时直接报明确错误，提示应填写环境变量名而非密钥值。
+
+#### 验证
+- 通过 `tsx` 直接加载配置验证：配置读取成功且可解析到 API key。
+
+#### 待解决问题
+- 当前 `.env` 中已有明文密钥，存在泄露风险，建议尽快轮换。
+
+#### 下一步
+- 轮换 API key，并确保密钥不进入版本控制与日志。
+
 ### 2026-03-22 - Entry 072 - 全量执行收口（主构建恢复 + P0/Recovery 全通过）
 
 #### 范围
