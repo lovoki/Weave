@@ -9,6 +9,30 @@
 
 ## 进度记录
 
+### 2026-03-22 - Entry 076 - 修复双会话显示（正常 + 等待中幽灵草稿）
+
+#### 范围
+`apps/weave-graph-web/src/store/graph-store.ts`
+
+#### 改动
+- 修复草稿会话迁移时序漏洞：
+  - 原逻辑仅在 `run.start` 且 `dagId != runId` 时迁移草稿。
+  - 现改为：**任何** `dagId != runId` 的事件到达时都尝试迁移草稿。
+- 增加幽灵草稿清理：
+  - 当正式 DAG 已存在且草稿 DAG 仍为空（无节点、无边、同 runId）时自动删除草稿。
+
+#### 验证
+- 静态检查通过：`graph-store.ts` 无错误。
+- 前端构建通过：`pnpm --filter weave-graph-web build`。
+- 浏览器恢复链路通过：`pnpm verify:browser-recovery-e2e`
+  - `Browser recovery E2E verification passed.`
+
+#### 待解决问题
+- 暂无新增阻断问题。
+
+#### 下一步
+- 可补充前端 store 单测：覆盖“run.start 丢包但后续 node.upsert 到达”的迁移与清理场景。
+
 ### 2026-03-22 - Entry 075 - 修复图模式仍报 Missing API key（dist 优先加载导致旧逻辑生效）
 
 #### 范围

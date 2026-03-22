@@ -173,11 +173,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     });
   },
   applyEnvelope(evt) {
-    if (evt.eventType === "run.start" && evt.dagId !== evt.runId) {
-      // 当后端将 dagId 归一化后，把前端草稿 runId 键迁移到正式 dagId，避免出现双会话分裂。
+    if (evt.dagId !== evt.runId) {
+      // 关键修复：不仅 run.start，任何归一化 dagId 事件都触发草稿迁移/清理，防止 run.start 丢包后遗留“等待中”幽灵会话。
       const currentState = get();
       const draft = currentState.dags[evt.runId];
       const target = currentState.dags[evt.dagId];
+
       if (draft && !target) {
         set((state) => {
           const nextDags = { ...state.dags };
@@ -196,6 +197,39 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             activeDagId: state.activeDagId === evt.runId ? evt.dagId : state.activeDagId
           };
         });
+      } else if (draft && target) {
+        const isDraftPlaceholder =
+          draft.nodes.length === 0 &&
+          draft.edges.length === 0 &&
+          draft.runId === target.runId;
+
+        if (isDraftPlaceholder) {
+          set((state) => {
+            const currentDraft = state.dags[evt.runId];
+            const currentTarget = state.dags[evt.dagId];
+            if (!currentDraft || !currentTarget) {
+              return state;
+            }
+
+            const stillPlaceholder =
+              currentDraft.nodes.length === 0 &&
+              currentDraft.edges.length === 0 &&
+              currentDraft.runId === currentTarget.runId;
+
+            if (!stillPlaceholder) {
+              return state;
+            }
+
+            const nextDags = { ...state.dags };
+            delete nextDags[evt.runId];
+
+            return {
+              dags: nextDags,
+              dagOrder: state.dagOrder.filter((id) => id !== evt.runId),
+              activeDagId: state.activeDagId === evt.runId ? evt.dagId : state.activeDagId
+            };
+          });
+        }
       }
     }
 
