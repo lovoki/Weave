@@ -15,6 +15,7 @@ import type {
   RunStartPayload,
   NodeIoPayload
 } from "../types/graph-events";
+import { RpcPendingManager } from "../lib/rpc-pending-manager";
 
 export interface DagGraph {
   dagId: string;
@@ -50,52 +51,23 @@ interface GraphState {
 
 // ─── 全局 RPC 状态 ──────────────────────────────────────────────────────────
 
-const pendingRequests = new Map<string, {
-  resolve: (data: any) => void;
-  reject: (err: string) => void;
-  timer?: number;
-  type: string;
-  payload: unknown;
-  resyncRetried?: boolean;
-}>();
-
 const RPC_TIMEOUT_MS = 15000;
+const pendingManager = new RpcPendingManager(RPC_TIMEOUT_MS);
 
 /** 标记 RPC 已经真正写入 WS，超时从这一刻开始计算，避免离线排队误超时。 */
 export const markRpcDispatched = (reqId: string) => {
-  const req = pendingRequests.get(reqId);
-  if (!req || req.timer !== undefined) {
-    return;
-  }
-
-  req.timer = window.setTimeout(() => {
-    const current = pendingRequests.get(reqId);
-    if (!current) return;
-    pendingRequests.delete(reqId);
-    current.reject("RPC Timeout");
-  }, RPC_TIMEOUT_MS);
+  pendingManager.markDispatched(reqId);
 };
 
 /** 主动取消待处理 RPC（例如队列溢出、页面销毁）。 */
 export const cancelRpcRequest = (reqId: string, reason = "RPC Canceled") => {
-  const req = pendingRequests.get(reqId);
-  if (!req) return;
-  if (req.timer !== undefined) {
-    clearTimeout(req.timer);
-  }
-  pendingRequests.delete(reqId);
-  req.reject(reason);
+  pendingManager.cancel(reqId, reason);
 };
 
 /** 暴露给 App.tsx 处理 WS 返回消息 */
 export const resolveRpc = (reqId: string, ok: boolean, error?: string, payload?: any) => {
-  const req = pendingRequests.get(reqId);
+  const req = pendingManager.consume(reqId);
   if (!req) return;
-  
-  if (req.timer !== undefined) {
-    clearTimeout(req.timer);
-  }
-  pendingRequests.delete(reqId);
   
   if (ok) {
     req.resolve(payload);
@@ -118,17 +90,9 @@ export const resolveRpc = (reqId: string, ok: boolean, error?: string, payload?:
           payload: retryPayload
         };
 
-        const retryTimer = window.setTimeout(() => {
-          if (pendingRequests.has(retryReqId)) {
-            pendingRequests.delete(retryReqId);
-            req.reject("RPC Timeout");
-          }
-        }, RPC_TIMEOUT_MS);
-
-        pendingRequests.set(retryReqId, {
+        pendingManager.register(retryReqId, {
           resolve: req.resolve,
           reject: req.reject,
-          timer: retryTimer,
           type: "run.subscribe",
           payload: retryPayload,
           resyncRetried: true
@@ -441,10 +405,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     const envelope = { type, reqId, payload };
 
     return new Promise((resolve, reject) => {
-      pendingRequests.set(reqId, {
+      pendingManager.register(reqId, {
         resolve,
         reject,
-        timer: undefined,
         type,
         payload,
         resyncRetried: false

@@ -2693,3 +2693,42 @@
 
 #### 下一步
 引入浏览器端 E2E 用例，覆盖“断网抖动 + 重连 + 队列请求补发 + RESYNC 自愈”全链路。
+
+### 2026-03-22 - Entry 2026-03-22-J - RPC Pending 状态机抽离与验证（第十二阶段）
+
+#### 范围
+将 RPC 超时/取消语义从 store 内联逻辑抽离为独立状态机模块，并补齐专项自动化验证。
+
+#### 改动
+- 抽离状态机模块：
+  - `apps/weave-graph-web/src/lib/rpc-pending-manager.ts`
+  - 提供 `register/markDispatched/cancel/consume` 能力，统一请求生命周期管理。
+- 集成到 store：
+  - `apps/weave-graph-web/src/store/graph-store.ts`
+  - `sendRpc/resolveRpc/markRpcDispatched/cancelRpcRequest` 全部改为通过 `RpcPendingManager` 驱动。
+- 新增专项验证脚本：
+  - `scripts/verify-rpc-pending.ts`
+  - 覆盖 4 条关键语义：
+    - 未发送请求不应超时；
+    - 发送后才进入超时计时；
+    - 主动取消应立即 reject；
+    - consume 后应正确移出 pending。
+- 命令接入：
+  - 根 `package.json` 新增 `verify:rpc-pending`。
+
+#### 影响文件
+- apps/weave-graph-web/src/lib/rpc-pending-manager.ts
+- apps/weave-graph-web/src/store/graph-store.ts
+- scripts/verify-rpc-pending.ts
+- package.json
+
+#### 验证
+- `pnpm verify:rpc-pending` 通过。
+- `pnpm --filter weave-graph-web build` 通过。
+- 相关文件 `get_errors` 检查均无错误。
+
+#### 待解决问题
+- 仍缺浏览器端 E2E 级恢复验证（真实页面、真实 WS 重连抖动）。
+
+#### 下一步
+补齐浏览器端 E2E 场景，将当前逻辑级/网关级验证延伸到交互级闭环验证。
