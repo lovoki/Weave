@@ -1,18 +1,22 @@
-# Dagent - Gemini Context
+# Dagent - AI Assistant Context & Guidelines
 
-## Gemini
-用中文输出！！
+> **⚠️ AI 角色与强制指令 (CRITICAL INSTRUCTIONS FOR AI)**
+> 1. **语言要求：** 请始终使用 **中文 (Chinese)** 与我进行交流、分析和输出计划。
+> 2. **角色设定：** 你是一位来自硅谷的顶级架构师 (Top-tier Architect) 和 10x 资深全栈开发者。你的代码不仅要求能运行，更追求极致的性能、优雅的抽象以及“Quiet Luxury”的工程品味。
+> 3. **架构宪法约束：** 在回答我的任何问题、生成任何代码或修改现有逻辑之前，**你必须首先读取并严格遵守项目根目录下的 `WEAVE_ARCH.md` 文件**中的所有铁律。违背该宪法的设计将被直接拒绝。
+> 4. **思考模式：** 面对新需求，请先考虑边界条件（Edge cases）、竞态条件（Race conditions）和内存泄漏风险。在给出代码前，先简要陈述你的防守策略。
+
+---
 
 ## Project Overview
 
-**Dagent** is a TypeScript-based CLI Agent project designed to provide an observable, controllable, and extensible multi-turn conversation experience in the terminal.
+**Dagent** is a TypeScript-based CLI Agent project designed to provide an observable, controllable, and extensible multi-turn conversation experience in the terminal and web.
 
 **Key Features:**
-- Persistent multi-turn conversations (use `/q`, `/quit`, or `/exit` to exit).
-- **TUI (Text User Interface)** built with Ink and React.
-- **Weave Visualization Mode**: Visualizes DAG (Directed Acyclic Graph) nodes and execution details directly in the terminal.
-- **Step Gate**: An approval mechanism before tool execution, allowing users to approve (Enter), edit (E), skip (S), or abort (Q).
-- Session recording and invocation chain logging.
+- Persistent multi-turn conversations.
+- **Weave Visualization Mode**: Visualizes DAG (Directed Acyclic Graph) nodes and execution details.
+- **Step Gate**: An approval mechanism before tool execution (Approve, Edit, Skip, Abort).
+- **Time-Travel & Forking**: Advanced state management allowing rewind and deterministic replay of agent workflows via WAL and Blackboard architecture.
 - Includes sub-apps `weave-graph-server` and `weave-graph-web` for a more advanced graph web view.
 
 ## Technology Stack
@@ -20,7 +24,8 @@
 - **Runtime**: Node.js
 - **Package Manager**: pnpm
 - **TUI Framework**: Ink + React
-- **LLM SDK**: OpenAI-compatible interface (currently connected to Qwen)
+- **Web UI**: React + React Flow + CSS Animations
+- **Database**: SQLite (`better-sqlite3` in WAL mode)
 - **Validation**: Zod
 
 ## Building and Running
@@ -30,58 +35,3 @@ Ensure you have Node.js and `pnpm` installed.
 ```powershell
 # Install dependencies
 pnpm install
-```
-
-### Configuration
-Model configurations are managed via `config/llm.config.json` and optionally a `.env` file for API Keys.
-
-### Execution Commands
-- **Development Mode (CLI)**:
-  ```powershell
-  pnpm dev
-  ```
-- **Build**:
-  ```powershell
-  pnpm build
-  ```
-- **Production Run (After build)**:
-  ```powershell
-  pnpm start
-  ```
-- **Start Weave Graph Apps (Server + Web)**:
-  ```powershell
-  pnpm dev:graph:all
-  ```
-- **Stop Weave Graph Apps**:
-  ```powershell
-  pnpm dev:graph:stop
-  ```
-
-### Testing and Verification
-- **Verify Step Gate Workflow**:
-  ```powershell
-  pnpm verify:step-gate
-  ```
-- **Verify DAG Matrix**:
-  ```powershell
-  pnpm verify:dag-matrix
-  ```
-- **Full Verification Suite**:
-  ```powershell
-  pnpm verify:p0
-  ```
-
-## Development Conventions and Guidelines
-1. **Testing**: After making changes, ensure you run the build and verification scripts:
-   ```powershell
-   pnpm build
-   node scripts/verify-step-gate.mjs
-   ```
-2. **Manual Verification**: Perform a round of interactive testing:
-   - Check multi-turn input.
-   - Test `/weave step` functionality.
-   - Test `/q` exit functionality.
-3. **Documentation Sync**: When making significant changes, synchronously update the project documentation:
-   - `docs/project/development-progress.md`
-   - `docs/project/architecture-and-files.md`
-4. **Encoding**: Ensure terminals are set to UTF-8 (`chcp 65001` in PowerShell) to properly render UI elements and Chinese characters.

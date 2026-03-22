@@ -28,5 +28,13 @@ export {
   type GateActionMessage,
   type ClientMessageEnvelope,
   type ServerResponseMessageEnvelope,
-  type GateActionPayload
+  type GateActionPayload,
+  type StartRunPayload,
+  type StartRunResponsePayload,
+  type RunSubscribePayload,
+  type RunSubscribeResponsePayload,
+  type RunAbortPayload,
+  type RunAbortResponsePayload,
+  type RpcErrorPayload,
+  type RpcErrorCode
 } from "../../../shared/graph-protocol.js";

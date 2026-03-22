@@ -9,5 +9,5 @@ dagent\logs
 dagent\.dagent
 CLAUDE.md
 GEMINI.md
-.claude\
-.dagent\
+.claude/
+.dagent/

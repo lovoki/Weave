@@ -1,0 +1,247 @@
+/**
+ * 🌌 Weave Design System - CSS Variables & Base Styles
+ * AI Agent DAG Observability Layer
+ */
+
+/* ============================================
+   ROOT VARIABLES - DARK THEME (DEFAULT)
+   ============================================ */
+
+:root {
+  /* ===== BACKGROUND COLORS ===== */
+  --bg-base: #09090b;
+  --bg-elevated: rgba(15, 15, 18, 0.85);
+  --bg-card: rgba(24, 24, 27, 0.85);
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --bg-active: rgba(255, 255, 255, 0.08);
+
+  /* ===== TEXT COLORS ===== */
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
+  --text-disabled: #3f3f46;
+
+  /* ===== BORDER COLORS ===== */
+  --border-primary: rgba(255, 255, 255, 0.1);
+  --border-secondary: rgba(255, 255, 255, 0.06);
+  --border-hover: rgba(255, 255, 255, 0.15);
+
+  /* ===== SEMANTIC COLORS ===== */
+  --purple: #8b5cf6;
+  --purple-light: #a78bfa;
+  --purple-dark: #7c3aed;
+  --purple-glow: rgba(139, 92, 246, 0.4);
+  --purple-bg: rgba(139, 92, 246, 0.15);
+
+  --green: #10b981;
+  --green-light: #34d399;
+  --green-dark: #059669;
+  --green-glow: rgba(16, 185, 129, 0.4);
+  --green-bg: rgba(16, 185, 129, 0.15);
+
+  --amber: #f59e0b;
+  --amber-light: #fbbf24;
+  --amber-dark: #d97706;
+  --amber-glow: rgba(245, 158, 11, 0.4);
+  --amber-bg: rgba(245, 158, 11, 0.15);
+
+  --blue: #3b82f6;
+  --blue-light: #60a5fa;
+  --blue-dark: #2563eb;
+  --blue-glow: rgba(59, 130, 246, 0.4);
+  --blue-bg: rgba(59, 130, 246, 0.15);
+
+  --red: #ef4444;
+  --red-light: #f87171;
+  --red-dark: #dc2626;
+  --red-glow: rgba(239, 68, 68, 0.4);
+  --red-bg: rgba(239, 68, 68, 0.15);
+
+  /* ===== COSMIC EFFECTS ===== */
+  --nebula-1: rgba(139, 92, 246, 0.1);
+  --nebula-2: rgba(99, 102, 241, 0.08);
+  --nebula-3: rgba(168, 85, 247, 0.06);
+  --star-opacity: 1;
+  --grid-opacity: 0.03;
+
+  /* ===== SHADOWS ===== */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-glow-purple: 0 0 20px var(--purple-glow);
+  --shadow-glow-green: 0 0 20px var(--green-glow);
+  --shadow-glow-amber: 0 0 20px var(--amber-glow);
+  --shadow-glow-blue: 0 0 20px var(--blue-glow);
+
+  /* ===== SPACING ===== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ===== BORDER RADIUS ===== */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* ===== TYPOGRAPHY ===== */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 
+               'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+
+  /* ===== TRANSITIONS ===== */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+  --transition-theme: 0.4s ease;
+
+  /* ===== Z-INDEX ===== */
+  --z-base: 1;
+  --z-dropdown: 10;
+  --z-sticky: 50;
+  --z-modal: 100;
+  --z-tooltip: 200;
+}
+
+/* ============================================
+   LIGHT THEME OVERRIDES
+   ============================================ */
+
+.light-theme {
+  /* ===== BACKGROUND COLORS ===== */
+  --bg-base: #f8f9fa;
+  --bg-elevated: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.02);
+  --bg-active: rgba(0, 0, 0, 0.04);
+
+  /* ===== TEXT COLORS ===== */
+  --text-primary: #1a1a2e;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --text-disabled: #d1d5db;
+
+  /* ===== BORDER COLORS ===== */
+  --border-primary: #e5e7eb;
+  --border-secondary: #f0f0f0;
+  --border-hover: #d1d5db;
+
+  /* ===== REDUCED GLOW ===== */
+  --purple-glow: rgba(139, 92, 246, 0.15);
+  --green-glow: rgba(16, 185, 129, 0.15);
+  --amber-glow: rgba(245, 158, 11, 0.15);
+  --blue-glow: rgba(59, 130, 246, 0.15);
+  --red-glow: rgba(239, 68, 68, 0.15);
+
+  /* ===== COSMIC (DISABLED) ===== */
+  --nebula-1: transparent;
+  --nebula-2: transparent;
+  --nebula-3: transparent;
+  --star-opacity: 0;
+  --grid-opacity: 0;
+
+  /* ===== SHADOWS ===== */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06), 0 0 1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  line-height: 1.5;
+  transition: background var(--transition-theme), 
+              color var(--transition-theme);
+}
+
+/* ============================================
+   TYPOGRAPHY UTILITIES
+   ============================================ */
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+
+.font-mono { font-family: var(--font-mono); }
+
+.text-xs { font-size: 10px; }
+.text-sm { font-size: 12px; }
+.text-base { font-size: 14px; }
+.text-lg { font-size: 16px; }
+
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.uppercase { text-transform: uppercase; }
+.tracking-wide { letter-spacing: 0.5px; }
+
+/* ============================================
+   FOCUS STATES
+   ============================================ */
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
+
+/* ============================================
+   SELECTION
+   ============================================ */
+
+::selection {
+  background: var(--purple-bg);
+  color: var(--text-primary);
+}

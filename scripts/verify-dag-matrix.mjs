@@ -1,10 +1,10 @@
 /**
  * 文件作用：DAG 语义测试矩阵，覆盖环路/死锁/依赖缺失/重试/超时/审批恢复/off-on-step 一致性。
  */
-import { DagExecutionGraph } from "../dist/engine/dag-graph.js";
-import { AgentRuntime } from "../dist/agent/run-agent.js";
-import { MemoryStore } from "../dist/memory/memory-store.js";
-import { ToolRegistry } from "../dist/tools/tool-registry.js";
+import { DagExecutionGraph } from "../dist/core/engine/dag-graph.js";
+import { AgentRuntime } from "../dist/application/agent/run-agent.js";
+import { MemoryStore } from "../dist/infrastructure/memory/memory-store.js";
+import { ToolRegistry } from "../dist/infrastructure/tools/tool-registry.js";
 
 async function main() {
   const baseConfig = {

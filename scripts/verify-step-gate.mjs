@@ -1,9 +1,9 @@
 /**
  * 文件作用：提供可重复执行的 Step Gate 冒烟验证脚本，覆盖 approve/skip/edit 三条关键路径。
  */
-import { AgentRuntime } from "../dist/agent/run-agent.js";
-import { MemoryStore } from "../dist/memory/memory-store.js";
-import { ToolRegistry } from "../dist/tools/tool-registry.js";
+import { AgentRuntime } from "../dist/application/agent/run-agent.js";
+import { MemoryStore } from "../dist/infrastructure/memory/memory-store.js";
+import { ToolRegistry } from "../dist/infrastructure/tools/tool-registry.js";
 
 async function main() {
   const baseConfig = {

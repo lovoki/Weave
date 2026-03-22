@@ -1,0 +1,342 @@
+/**
+ * 🌌 Weave Design System - Animation Keyframes
+ * All animations for the DAG visualization
+ */
+
+/* ============================================
+   NODE ANIMATIONS
+   ============================================ */
+
+/* Node Enter - Scale in with fade */
+@keyframes nodeEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Node Float - Gentle vertical movement for running state */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* Node Pulse - Subtle scale pulse */
+@keyframes nodePulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+/* Node Glow - Box shadow pulse */
+@keyframes nodeGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px var(--glow-color, var(--purple-glow));
+  }
+  50% {
+    box-shadow: 0 0 25px var(--glow-color, var(--purple-glow));
+  }
+}
+
+/* Selection Ripple - Expands outward on click */
+@keyframes ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Node Shake - Error feedback */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+/* ============================================
+   EDGE ANIMATIONS
+   ============================================ */
+
+/* Edge Glow - Stroke opacity pulse */
+@keyframes edgeGlow {
+  0%, 100% {
+    stroke-opacity: 0.6;
+    filter: drop-shadow(0 0 3px var(--glow-color, var(--purple-glow)));
+  }
+  50% {
+    stroke-opacity: 1;
+    filter: drop-shadow(0 0 8px var(--glow-color, var(--purple-glow)));
+  }
+}
+
+/* Edge Flow - Dash animation for active edges */
+@keyframes edgeFlow {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* Star Particle Path - Moves along edge path */
+@keyframes starPath {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+/* Star Particle with Scale */
+@keyframes starPathScale {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  85% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+/* ============================================
+   COSMIC ANIMATIONS
+   ============================================ */
+
+/* Star Twinkle - Opacity + scale */
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* Star Twinkle Variant 2 */
+@keyframes twinkle2 {
+  0%, 100% {
+    opacity: 0.1;
+  }
+  30% {
+    opacity: 0.8;
+  }
+  60% {
+    opacity: 0.3;
+  }
+}
+
+/* Nebula Drift - Slow movement */
+@keyframes nebulaDrift {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(15px, -10px) scale(1.1);
+  }
+}
+
+/* Shooting Star */
+@keyframes shootingStar {
+  0% {
+    transform: translateX(0) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(80px) translateY(80px);
+    opacity: 0;
+  }
+}
+
+/* Cosmic Grid Pulse */
+@keyframes cosmicPulse {
+  0%, 100% {
+    opacity: 0.03;
+  }
+  50% {
+    opacity: 0.06;
+  }
+}
+
+/* ============================================
+   UI ANIMATIONS
+   ============================================ */
+
+/* Spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pulse - Simple opacity */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Breathe - Combined scale + opacity */
+@keyframes breathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.02);
+  }
+}
+
+/* Panel Expand In - Slide from right */
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Panel Slide In - From bottom */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade In */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Scale In */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Animation Application */
+.animate-float {
+  animation: float 2.5s ease-in-out infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-spin {
+  animation: spin 1.2s linear infinite;
+}
+
+.animate-twinkle {
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+.animate-breathe {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+.animate-node-enter {
+  animation: nodeEnter 0.4s ease-out forwards;
+}
+
+.animate-expand-in {
+  animation: expandIn 0.4s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out forwards;
+}
+
+/* Animation Delays */
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-500 { animation-delay: 0.5s; }
+
+/* Animation Fill Modes */
+.fill-forwards { animation-fill-mode: forwards; }
+.fill-backwards { animation-fill-mode: backwards; }
+.fill-both { animation-fill-mode: both; }
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

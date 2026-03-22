@@ -4,6 +4,7 @@
 
 import { GraphProjector, type RuntimeRawEvent } from "./projection/graph-projector.js";
 import { createGraphGateway } from "./gateway/ws-gateway.js";
+import { createRuntimeBridge } from "./runtime/runtime-bridge.js";
 
 async function main(): Promise<void> {
   const projector = new GraphProjector();
@@ -32,14 +33,32 @@ async function main(): Promise<void> {
     }
   };
 
-  gateway.registerRuntimeIngestHandler(forward);
+  const runtimeBridge = await createRuntimeBridge({
+    onRuntimeEvent: forward
+  });
 
-  // Demo: 用于验证协议链路通路。
-  forward({
-    runId: "demo-run-1",
-    type: "run.start",
-    timestamp: new Date().toISOString(),
-    payload: { userInput: "ls -a" }
+  gateway.registerRuntimeIngestHandler(forward);
+  gateway.registerRunCommandHandlers({
+    startRun: async (payload) => runtimeBridge.startRun({
+      userInput: payload.userInput,
+      sessionId: payload.sessionId ?? "",
+      clientRequestId: payload.clientRequestId
+    }),
+    abortRun: async (runId) => runtimeBridge.abortRun(runId),
+    replayRunEvents: async (runId) => {
+      if (!runtimeBridge.loadRunEvents) {
+        return null;
+      }
+      const loaded = await runtimeBridge.loadRunEvents(runId);
+      if (!loaded) {
+        return null;
+      }
+
+      // 使用独立 projector 重放，保证序号从 run 起点稳定重建。
+      const replayProjector = new GraphProjector();
+      const rebuilt = loaded.events.flatMap((evt) => replayProjector.project(evt));
+      return rebuilt;
+    }
   });
 }
 

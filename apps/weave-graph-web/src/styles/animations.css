@@ -134,14 +134,17 @@
 
   .constellation-star-node {
     opacity: 0;
-    transition: opacity 0.3s ease-out;
-    /* 1.5s / 6 段主要线段 ≈ 0.25s 步长 */
-    /* 第一颗星 (index 0) 延迟为 0，立即亮起 */
-    transition-delay: calc(var(--star-index, 0) * 0.25s);
+    transition: opacity 0.2s ease-out;
+    /* 🚀 倒序消失逻辑 (当 body.input-focused 移除时生效) */
+    /* 1.5s 总时长 / 6 段线段 = 0.25s 步长 */
+    /* (6 - index) * 0.25s 确保最后一颗星 (index 6) 最先开始消失 */
+    transition-delay: calc((6 - var(--star-index, 0)) * 0.25s);
   }
 
   body.input-focused .constellation-star-node {
     opacity: 1;
+    /* 🚀 正序亮起逻辑 (当获得 focus 时生效) */
+    transition-delay: calc(var(--star-index, 0) * 0.25s);
   }
 
   .constellation-star {

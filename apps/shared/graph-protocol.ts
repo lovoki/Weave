@@ -18,6 +18,8 @@ export type GraphEventType =
 
 export interface GraphEnvelope<TPayload = unknown> {
   schemaVersion: typeof GRAPH_SCHEMA_VERSION;
+  /** 全局唯一事件标识（run 维度），用于断线重连去重与增量回放 */
+  eventId: string;
   seq: number;
   runId: string;
   dagId: string;
@@ -204,9 +206,62 @@ export interface NodeApprovalResolvedPayload {
   action: "approve" | "edit" | "skip" | "abort";
 }
 
+/** 启动 run 的请求负载 */
+export interface StartRunPayload {
+  userInput: string;
+  sessionId?: string;
+  clientRequestId?: string;
+}
+
+/** 启动 run 的响应负载 */
+export interface StartRunResponsePayload {
+  runId: string;
+  sessionId: string;
+  acceptedAt: string;
+  status: "accepted";
+}
+
+/** 订阅 run 事件流请求负载（支持事件游标） */
+export interface RunSubscribePayload {
+  runId: string;
+  lastEventId?: string;
+}
+
+/** 订阅 run 事件流响应负载 */
+export interface RunSubscribeResponsePayload {
+  runId: string;
+  replayedCount: number;
+}
+
+/** 中止 run 请求负载 */
+export interface RunAbortPayload {
+  runId: string;
+}
+
+/** 中止 run 响应负载 */
+export interface RunAbortResponsePayload {
+  runId: string;
+  status: "aborted" | "not-running";
+  abortedAt: string;
+}
+
+/** RPC 标准错误码 */
+export type RpcErrorCode =
+  | "AGENT_BUSY"
+  | "RUN_NOT_FOUND"
+  | "ABORT_NOT_ALLOWED"
+  | "RESYNC_REQUIRED"
+  | "INVALID_ARGUMENT";
+
+/** RPC 标准错误响应体 */
+export interface RpcErrorPayload {
+  code: RpcErrorCode;
+  message: string;
+}
+
 /** 前端向服务端发送的 RPC 请求信封 */
 export interface ClientMessageEnvelope<T = unknown> {
-  type: "gate.action" | "node.update_params" | "command.fork" | "snapshot.query";
+  type: "start.run" | "run.abort" | "run.subscribe" | "gate.action" | "node.update_params" | "command.fork" | "snapshot.query";
   reqId?: string;
   payload: T;
 }

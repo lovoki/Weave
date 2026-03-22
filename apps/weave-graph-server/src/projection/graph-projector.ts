@@ -391,6 +391,7 @@ export class GraphProjector {
 
     return {
       schemaVersion: GRAPH_SCHEMA_VERSION,
+      eventId: `${runId}:${next}`,
       seq: next,
       runId,
       dagId: this.dagIdByRun.get(runId) ?? runId,
