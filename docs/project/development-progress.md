@@ -2662,3 +2662,34 @@
 
 #### 下一步
 补充浏览器端恢复 E2E 用例（模拟网关重启与断网抖动），将恢复链路验证从逻辑级提升到交互级。
+
+### 2026-03-22 - Entry 2026-03-22-I - 网关重连回放集成验证（第十一阶段）
+
+#### 范围
+补齐网关侧“断开 -> 重连 -> 增量订阅 -> abort -> 再重连回放”集成用例，验证跨连接恢复语义。
+
+#### 改动
+- 新增脚本：
+  - `apps/weave-graph-server/scripts/verify-gateway-reconnect.mjs`
+  - 覆盖三段连接：
+    - 连接 A：`start.run` 并记录 `run.start.eventId`；
+    - 连接 B：带游标 `run.subscribe`（期望 0 回放）并执行 `run.abort`；
+    - 连接 C：同游标再次 `run.subscribe`（期望回放至少 `run.end`）。
+- 命令接入：
+  - `apps/weave-graph-server/package.json` 新增 `verify:gateway-reconnect`。
+  - 根 `package.json` 新增透传命令 `verify:gateway-reconnect`。
+
+#### 影响文件
+- apps/weave-graph-server/scripts/verify-gateway-reconnect.mjs
+- apps/weave-graph-server/package.json
+- package.json
+
+#### 验证
+- `pnpm --filter weave-graph-server verify:gateway-reconnect` 通过。
+  - 输出：`replayedCountBeforeAbort=0`、`replayedCountAfterAbort=1`。
+
+#### 待解决问题
+- 当前仍缺浏览器层 UI 自动化（真实页面重连、请求队列 flush 可视化行为）验证。
+
+#### 下一步
+引入浏览器端 E2E 用例，覆盖“断网抖动 + 重连 + 队列请求补发 + RESYNC 自愈”全链路。

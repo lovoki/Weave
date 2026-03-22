@@ -268,6 +268,8 @@ dagent/
   - DAG 语义测试矩阵脚本：覆盖环路、死锁、依赖缺失、重试、超时、审批中断恢复、一致性回归。
 - `scripts/verify-graph-recovery.ts`
   - 恢复链路验证脚本：覆盖重订阅计划去重、离线队列淘汰、FIFO 刷新与并发上限控制。
+- `apps/weave-graph-server/scripts/verify-gateway-reconnect.mjs`
+  - 网关重连回放集成脚本：覆盖跨连接 `run.subscribe` 增量回放与 `run.abort` 后回放一致性。
 - `src/weave/weave-dag-prompt.md`
   - Weave 历史提示词文档（当前观察者模式不再依赖运行时注入）。
 

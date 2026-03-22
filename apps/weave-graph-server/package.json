@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "verify:gateway-rpc": "pnpm build && node scripts/verify-gateway-rpc.mjs",
+    "verify:gateway-reconnect": "pnpm build && node scripts/verify-gateway-reconnect.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",
