@@ -9,6 +9,42 @@
 
 ## 进度记录
 
+### 2026-03-22 - Entry 072 - 全量执行收口（主构建恢复 + P0/Recovery 全通过）
+
+#### 范围
+`src/application/agent/run-agent.ts`、`src/domain/event/event-bus.ts`、`src/application/agent/tool-executor.ts`、`src/infrastructure/wal/weave-wal-manager.ts`、`src/infrastructure/wal/wal-api-service.ts`、`src/presentation/index.ts`
+
+#### 改动
+- **事件契约修复**：
+  - `run-agent.ts` 中 `emitRunEvent` 入参改为仅排除 `schemaVersion/eventId/timestamp`，保留 `runId`，并修复 `BaseEvent` 类型引用歧义。
+  - `event-bus.ts` 删除不属于 `AgentRunEvent` 的字段写入，统一事件对象构造并收敛联合类型赋值。
+- **接口依赖修复**：
+  - `tool-executor.ts` 由依赖 `ToolRegistry` 具体类改为依赖 `IToolRegistry` 接口，消除 domain/application 与 infrastructure 的类型耦合。
+  - `wal-api-service.ts` 修复类型导入来源（`SessionRecord/ExecutionRecord` 来自 `application/ports/wal-dao.ts`）。
+  - `weave-wal-manager.ts` 由依赖 `WalDao` 具体类改为依赖 `IWalDao` 接口，并通过 DAO 方法写入 WAL 事件。
+- **兼容性修复**：
+  - `run-agent.ts` 增加旧构造签名兼容（`new AgentRuntime(config, memoryStore, toolRegistry)`），补充 Noop 依赖兜底，修复 `verify-step-gate.mjs` 运行时崩溃。
+  - `presentation/index.ts` 增加 `AgentRunEvent` 类型导入，修复编译期未定义符号。
+
+#### 验证
+- 主构建通过：`pnpm build`
+- P0 回归通过：`pnpm verify:p0`
+  - `Step Gate smoke tests passed.`
+  - `DAG matrix verification passed.`
+- 恢复链路回归通过：`pnpm verify:recovery-all`
+  - `Graph recovery verification passed.`
+  - `RPC pending verification passed.`
+  - `WS recovery controller verification passed.`
+  - `Gateway RPC verification passed.`
+  - `Gateway reconnect verification passed.`
+  - `Browser recovery E2E verification passed.`
+
+#### 待解决问题
+- `weave-graph-web` 构建仍提示大 chunk 警告（>500kB），不影响功能正确性。
+
+#### 下一步
+- 对前端高频语言包做分片与按需加载优化，降低首屏加载体积。
+
 ### 2026-03-22 - Entry 071 - 修复开屏转场后纯背景悬挂（连接就绪门禁 + 启动兜底超时）
 
 #### 范围
