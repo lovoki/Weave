@@ -1,10 +1,10 @@
 ﻿{
-    "graphWebUrl":  "http://127.0.0.1:5173/?port=49251\u0026token=ec45a53d923f8906a10e36fafc2eabad",
-    "startedAt":  "2026-03-22T17:18:22.0131180+08:00",
-    "graphServerPid":  21080,
-    "token":  "ec45a53d923f8906a10e36fafc2eabad",
-    "ingestUrl":  "http://127.0.0.1:49251/ingest/runtime-event",
-    "graphWebPid":  22884,
-    "cliPid":  9144,
-    "backendLogPid":  26532
+    "graphWebUrl":  "http://127.0.0.1:5173/?port=58125\u0026token=408f0cdd1bf7539f12b9957a9e8f829b",
+    "startedAt":  "2026-03-23T09:59:47.3406765+08:00",
+    "graphServerPid":  26448,
+    "token":  "408f0cdd1bf7539f12b9957a9e8f829b",
+    "ingestUrl":  "http://127.0.0.1:58125/ingest/runtime-event",
+    "graphWebPid":  18012,
+    "cliPid":  24448,
+    "backendLogPid":  7528
 }
