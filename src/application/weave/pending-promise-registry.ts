@@ -18,7 +18,7 @@ export class PendingPromiseRegistry {
   private pending = new Map<string, PendingEntry>();
 
   /** 挂起节点等待审批，超时自动 reject */
-  suspend(nodeId: string, node: BaseNode, timeoutMs = 5 * 60 * 1000): Promise<InterceptDecision> {
+  suspend(nodeId: string, node: BaseNode, timeoutMs = 2 * 60 * 1000): Promise<InterceptDecision> {
     // 清理已有挂起（防御性）
     if (this.pending.has(nodeId)) {
       const old = this.pending.get(nodeId)!;

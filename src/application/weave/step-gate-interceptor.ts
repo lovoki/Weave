@@ -77,6 +77,10 @@ export class StepGateInterceptor implements INodeInterceptor {
       decision = await this.registry.suspend(node.id, node);
     }
 
+    // 确定最终用于广播的参数（如果编辑过则用编辑后的）
+    const finalArgs =
+      decision.action === "edit" && decision.editedArgs ? decision.editedArgs : effectiveArgs;
+
     // 广播审批结果事件
     ctx.bus.dispatch("node.approval.resolved", {
       sessionId: ctx.sessionId,
@@ -85,8 +89,8 @@ export class StepGateInterceptor implements INodeInterceptor {
       toolName,
       toolCallId,
       approvalAction: decision.action,
-      toolArgsText: summarizeText(effectiveArgs),
-      toolArgsJsonText: safeJsonStringify(effectiveArgs),
+      toolArgsText: summarizeText(finalArgs),
+      toolArgsJsonText: safeJsonStringify(finalArgs),
     });
 
     return decision;

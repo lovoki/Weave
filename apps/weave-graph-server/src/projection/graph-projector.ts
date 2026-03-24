@@ -15,7 +15,7 @@ import type {
   RunEndPayload,
   RunStartPayload,
   BaseNodePayload,
-  NodeKind
+  NodeKind,
 } from "../protocol/graph-events.js";
 import { GRAPH_SCHEMA_VERSION } from "../protocol/graph-events.js";
 
@@ -45,19 +45,25 @@ export class GraphProjector {
       const dagId = this.buildDagId(event.runId, sessionId, turnIndex);
       this.dagIdByRun.set(event.runId, dagId);
       this.completedAtByRun.delete(event.runId);
-      out.push(this.wrap<RunStartPayload>(event.runId, "run.start", event.timestamp, {
-        dagId,
-        sessionId,
-        turnIndex,
-        userInputSummary: userInput
-      }));
+      out.push(
+        this.wrap<RunStartPayload>(event.runId, "run.start", event.timestamp, {
+          dagId,
+          sessionId,
+          turnIndex,
+          userInputSummary: userInput,
+        })
+      );
     }
 
     if (event.type === "run.completed" || event.type === "run.error") {
-      out.push(this.wrap<RunEndPayload>(event.runId, "run.end", event.timestamp, {
-        ok: event.type === "run.completed",
-        finalSummary: this.stringValue(event.payload?.finalText) || this.stringValue(event.payload?.errorMessage)
-      }));
+      out.push(
+        this.wrap<RunEndPayload>(event.runId, "run.end", event.timestamp, {
+          ok: event.type === "run.completed",
+          finalSummary:
+            this.stringValue(event.payload?.finalText) ||
+            this.stringValue(event.payload?.errorMessage),
+        })
+      );
       this.completedAtByRun.set(event.runId, Date.now());
     }
 
@@ -70,26 +76,34 @@ export class GraphProjector {
       if (nodeId) {
         const kind = (frozen.kind ?? nodeType) as NodeKind;
         const title = this.stringValue(frozen.title) || nodeId;
-        out.push(this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
-          nodeId,
-          parentId: frozen.parentId ? String(frozen.parentId) : undefined,
-          kind: kind as NodeKind,
-          title,
-          tags: Array.isArray(frozen.tags) ? (frozen.tags as string[]) : undefined,
-          dependencies: Array.isArray(frozen.dependencies) ? (frozen.dependencies as string[]) : undefined
-        }));
-        out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
-          nodeId,
-          status: this.toNodeStatus(this.stringValue(frozen.status) || "pending")
-        }));
-        if (frozen.inputPorts || frozen.outputPorts || frozen.error || frozen.metrics) {
-          out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+        out.push(
+          this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
             nodeId,
-            inputPorts: frozen.inputPorts as BaseNodePayload["inputPorts"],
-            outputPorts: frozen.outputPorts as BaseNodePayload["outputPorts"],
-            error: frozen.error as BaseNodePayload["error"],
-            metrics: frozen.metrics as BaseNodePayload["metrics"]
-          }));
+            parentId: frozen.parentId ? String(frozen.parentId) : undefined,
+            kind: kind as NodeKind,
+            title,
+            tags: Array.isArray(frozen.tags) ? (frozen.tags as string[]) : undefined,
+            dependencies: Array.isArray(frozen.dependencies)
+              ? (frozen.dependencies as string[])
+              : undefined,
+          })
+        );
+        out.push(
+          this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
+            nodeId,
+            status: this.toNodeStatus(this.stringValue(frozen.status) || "pending"),
+          })
+        );
+        if (frozen.inputPorts || frozen.outputPorts || frozen.error || frozen.metrics) {
+          out.push(
+            this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+              nodeId,
+              inputPorts: frozen.inputPorts as BaseNodePayload["inputPorts"],
+              outputPorts: frozen.outputPorts as BaseNodePayload["outputPorts"],
+              error: frozen.error as BaseNodePayload["error"],
+              metrics: frozen.metrics as BaseNodePayload["metrics"],
+            })
+          );
         }
       }
     }
@@ -100,12 +114,14 @@ export class GraphProjector {
       const kind = this.stringValue(event.payload?.kind) || "dependency";
       if (fromId && toId) {
         const edgeId = `${fromId}->${toId}:${kind}`;
-        out.push(this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
-          edgeId,
-          source: fromId,
-          target: toId,
-          edgeKind: kind as EdgeUpsertPayload["edgeKind"]
-        }));
+        out.push(
+          this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
+            edgeId,
+            source: fromId,
+            target: toId,
+            edgeKind: kind as EdgeUpsertPayload["edgeKind"],
+          })
+        );
       }
     }
 
@@ -116,14 +132,16 @@ export class GraphProjector {
       const toKey = this.stringValue(event.payload?.toKey);
       if (fromNodeId && toNodeId) {
         const edgeId = `${fromNodeId}->${toNodeId}:data:${toKey}`;
-        out.push(this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
-          edgeId,
-          source: fromNodeId,
-          target: toNodeId,
-          fromPort: fromKey || undefined,
-          toPort: toKey || undefined,
-          edgeKind: "data"
-        }));
+        out.push(
+          this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
+            edgeId,
+            source: fromNodeId,
+            target: toNodeId,
+            fromPort: fromKey || undefined,
+            toPort: toKey || undefined,
+            edgeKind: "data",
+          })
+        );
       }
     }
 
@@ -132,19 +150,29 @@ export class GraphProjector {
       const toStatus = this.stringValue(event.payload?.toStatus);
       const updatedPayload = event.payload?.updatedPayload as Record<string, unknown> | undefined;
       if (nodeId) {
-        out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
-          nodeId,
-          status: this.toNodeStatus(toStatus)
-        }));
-        // 若携带快照数据，刷新 Inspector 面板
-        if (updatedPayload && (updatedPayload.inputPorts || updatedPayload.outputPorts || updatedPayload.error || updatedPayload.metrics)) {
-          out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+        out.push(
+          this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
             nodeId,
-            inputPorts: updatedPayload.inputPorts as BaseNodePayload["inputPorts"],
-            outputPorts: updatedPayload.outputPorts as BaseNodePayload["outputPorts"],
-            error: updatedPayload.error as BaseNodePayload["error"],
-            metrics: updatedPayload.metrics as BaseNodePayload["metrics"]
-          }));
+            status: this.toNodeStatus(toStatus),
+          })
+        );
+        // 若携带快照数据，刷新 Inspector 面板
+        if (
+          updatedPayload &&
+          (updatedPayload.inputPorts ||
+            updatedPayload.outputPorts ||
+            updatedPayload.error ||
+            updatedPayload.metrics)
+        ) {
+          out.push(
+            this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+              nodeId,
+              inputPorts: updatedPayload.inputPorts as BaseNodePayload["inputPorts"],
+              outputPorts: updatedPayload.outputPorts as BaseNodePayload["outputPorts"],
+              error: updatedPayload.error as BaseNodePayload["error"],
+              metrics: updatedPayload.metrics as BaseNodePayload["metrics"],
+            })
+          );
         }
       }
     }
@@ -152,13 +180,15 @@ export class GraphProjector {
     if (event.type === "engine.node.io") {
       const nodeId = this.stringValue(event.payload?.nodeId);
       if (nodeId) {
-        out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
-          nodeId,
-          inputPorts: event.payload?.inputPorts as BaseNodePayload["inputPorts"],
-          outputPorts: event.payload?.outputPorts as BaseNodePayload["outputPorts"],
-          error: event.payload?.error as BaseNodePayload["error"],
-          metrics: event.payload?.metrics as BaseNodePayload["metrics"]
-        }));
+        out.push(
+          this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+            nodeId,
+            inputPorts: event.payload?.inputPorts as BaseNodePayload["inputPorts"],
+            outputPorts: event.payload?.outputPorts as BaseNodePayload["outputPorts"],
+            error: event.payload?.error as BaseNodePayload["error"],
+            metrics: event.payload?.metrics as BaseNodePayload["metrics"],
+          })
+        );
       }
     }
 
@@ -166,17 +196,19 @@ export class GraphProjector {
       const nodeId = this.stringValue(event.payload?.nodeId);
       const delta = this.stringValue(event.payload?.chunkText);
       if (nodeId && delta) {
-        out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
-          nodeId,
-          outputPorts: [
-            {
-              name: "live_stream",
-              type: "text",
-              content: delta,
-              metadata: { is_delta: true }
-            }
-          ]
-        }));
+        out.push(
+          this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+            nodeId,
+            outputPorts: [
+              {
+                name: "live_stream",
+                type: "text",
+                content: delta,
+                metadata: { is_delta: true },
+              },
+            ],
+          })
+        );
       }
     }
 
@@ -186,20 +218,27 @@ export class GraphProjector {
       const message = this.stringValue(event.payload?.message);
       const issueNodeId = `scheduler-issue-${issueType}-${Date.now()}`;
       if (message) {
-        out.push(this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
-          nodeId: issueNodeId,
-          kind: "system",
-          title: `调度异常: ${message}`
-        }));
-        out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
-          nodeId: issueNodeId,
-          status: "fail"
-        }));
+        out.push(
+          this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
+            nodeId: issueNodeId,
+            kind: "system",
+            title: `调度异常: ${message}`,
+          })
+        );
+        out.push(
+          this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
+            nodeId: issueNodeId,
+            status: "fail",
+          })
+        );
       }
     }
 
     // ── 新版：weave.dag.base_node — 直接包含完整 BaseNodePayload ────────────
-    if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.base_node") {
+    if (
+      event.type === "plugin.output" &&
+      this.stringValue(event.payload?.outputType) === "weave.dag.base_node"
+    ) {
       const parsed = this.safeJson(this.stringValue(event.payload?.outputText));
       if (parsed?.nodeId) {
         const bp = parsed as unknown as BaseNodePayload;
@@ -208,87 +247,113 @@ export class GraphProjector {
         const title = String(bp.title ?? "");
 
         // node.upsert
-        out.push(this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
-          nodeId,
-          parentId: bp.parentId ? String(bp.parentId) : undefined,
-          kind,
-          title,
-          tags: Array.isArray(bp.tags) ? (bp.tags as string[]) : undefined,
-          dependencies: Array.isArray(bp.dependencies) ? (bp.dependencies as string[]) : undefined
-        }));
+        out.push(
+          this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
+            nodeId,
+            parentId: bp.parentId ? String(bp.parentId) : undefined,
+            kind,
+            title,
+            tags: Array.isArray(bp.tags) ? (bp.tags as string[]) : undefined,
+            dependencies: Array.isArray(bp.dependencies)
+              ? (bp.dependencies as string[])
+              : undefined,
+          })
+        );
 
         // node.status
-        out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
-          nodeId,
-          status: this.toNodeStatus(String(bp.status ?? "pending"))
-        }));
+        out.push(
+          this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
+            nodeId,
+            status: this.toNodeStatus(String(bp.status ?? "pending")),
+          })
+        );
 
         // node.io（端口 + 错误 + 指标）
         if (bp.inputPorts?.length || bp.outputPorts?.length || bp.error || bp.metrics) {
-          out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
-            nodeId,
-            inputPorts: bp.inputPorts,
-            outputPorts: bp.outputPorts,
-            error: bp.error,
-            metrics: bp.metrics
-          }));
+          out.push(
+            this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+              nodeId,
+              inputPorts: bp.inputPorts,
+              outputPorts: bp.outputPorts,
+              error: bp.error,
+              metrics: bp.metrics,
+            })
+          );
         }
 
         // 由 parentId 生成父子边
         if (bp.parentId) {
           const edgeId = `${String(bp.parentId)}->${nodeId}`;
-          out.push(this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
-            edgeId,
-            source: String(bp.parentId),
-            target: nodeId
-          }));
+          out.push(
+            this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
+              edgeId,
+              source: String(bp.parentId),
+              target: nodeId,
+            })
+          );
         }
 
         // 由 dependencies 生成依赖边
         if (Array.isArray(bp.dependencies)) {
           for (const depId of bp.dependencies as string[]) {
             const edgeId = `${depId}=>${nodeId}`;
-            out.push(this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
-              edgeId,
-              source: depId,
-              target: nodeId,
-              edgeKind: "dependency"
-            }));
+            out.push(
+              this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
+                edgeId,
+                source: depId,
+                target: nodeId,
+                edgeKind: "dependency",
+              })
+            );
           }
         }
       }
     }
 
     // ── 旧版：weave.dag.node（向后兼容，已不再由新 WeavePlugin 发射） ────────
-    if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.node") {
+    if (
+      event.type === "plugin.output" &&
+      this.stringValue(event.payload?.outputType) === "weave.dag.node"
+    ) {
       const parsed = this.safeJson(this.stringValue(event.payload?.outputText));
       if (parsed?.nodeId) {
         const explicitKind = parsed.kind ? String(parsed.kind) : undefined;
-        out.push(this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
-          nodeId: String(parsed.nodeId),
-          parentId: parsed.parentId ? String(parsed.parentId) : undefined,
-          kind: (explicitKind as NodeKind) ?? this.inferKind(String(parsed.nodeId), String(parsed.label || "")),
-          title: String(parsed.label || "")
-        }));
+        out.push(
+          this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
+            nodeId: String(parsed.nodeId),
+            parentId: parsed.parentId ? String(parsed.parentId) : undefined,
+            kind:
+              (explicitKind as NodeKind) ??
+              this.inferKind(String(parsed.nodeId), String(parsed.label || "")),
+            title: String(parsed.label || ""),
+          })
+        );
 
-        out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
-          nodeId: String(parsed.nodeId),
-          status: this.toNodeStatus(String(parsed.status || "running"))
-        }));
+        out.push(
+          this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
+            nodeId: String(parsed.nodeId),
+            status: this.toNodeStatus(String(parsed.status || "running")),
+          })
+        );
 
         if (parsed.parentId) {
           const edgeId = `${String(parsed.parentId)}->${String(parsed.nodeId)}`;
-          out.push(this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
-            edgeId,
-            source: String(parsed.parentId),
-            target: String(parsed.nodeId)
-          }));
+          out.push(
+            this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
+              edgeId,
+              source: String(parsed.parentId),
+              target: String(parsed.nodeId),
+            })
+          );
         }
       }
     }
 
     // ── weave.dag.edge（两版 WeavePlugin 均发射） ────────────────────────────
-    if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.edge") {
+    if (
+      event.type === "plugin.output" &&
+      this.stringValue(event.payload?.outputType) === "weave.dag.edge"
+    ) {
       const parsed = this.safeJson(this.stringValue(event.payload?.outputText));
       if (parsed?.sourceId && parsed?.targetId) {
         const sourceId = String(parsed.sourceId);
@@ -296,95 +361,136 @@ export class GraphProjector {
         const edgeId = parsed.edgeKind
           ? `${sourceId}->${targetId}:${String(parsed.edgeKind)}`
           : `${sourceId}->${targetId}`;
-        out.push(this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
-          edgeId,
-          source: sourceId,
-          target: targetId,
-          fromPort: parsed.fromPort ? String(parsed.fromPort) : undefined,
-          toPort: parsed.toPort ? String(parsed.toPort) : undefined,
-          edgeKind: parsed.edgeKind as EdgeUpsertPayload["edgeKind"] | undefined,
-          label: parsed.label ? String(parsed.label) : undefined
-        }));
+        out.push(
+          this.wrap<EdgeUpsertPayload>(event.runId, "edge.upsert", event.timestamp, {
+            edgeId,
+            source: sourceId,
+            target: targetId,
+            fromPort: parsed.fromPort ? String(parsed.fromPort) : undefined,
+            toPort: parsed.toPort ? String(parsed.toPort) : undefined,
+            edgeKind: parsed.edgeKind as EdgeUpsertPayload["edgeKind"] | undefined,
+            label: parsed.label ? String(parsed.label) : undefined,
+          })
+        );
       }
     }
 
     // ── Step Gate 事件 ────────────────────────────────────────────────────────
-    if (event.type === "tool.gate.pending") {
+    if (event.type === "tool.gate.pending" || event.type === "node.pending_approval") {
       const toolCallId = this.stringValue(event.payload?.toolCallId);
       const nodeId = this.stringValue(event.payload?.nodeId);
       const toolName = this.stringValue(event.payload?.toolName) || "unknown";
-      const toolParams = this.stringValue(event.payload?.toolParams) || "{}";
+      // 兼容后端发出的 toolArgsJsonText (新) 或 toolParams (旧)
+      const toolParams =
+        this.stringValue(event.payload?.toolArgsJsonText || event.payload?.toolParams) || "{}";
 
-      if (toolCallId) {
-        const targetNodeId = nodeId || `gate:${toolCallId.slice(-8)}`;
+      if (nodeId || toolCallId) {
+        const targetNodeId =
+          nodeId || (toolCallId ? `gate:${toolCallId.slice(-8)}` : "unknown-gate");
 
         // 如果没有提供明确的 nodeId，则回退到创建 Gate 节点的旧逻辑（向后兼容）
         if (!nodeId) {
-          out.push(this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
-            nodeId: targetNodeId,
-            kind: "gate",
-            title: `Step Gate · ${toolName}`
-          }));
+          out.push(
+            this.wrap<NodeUpsertPayload>(event.runId, "node.upsert", event.timestamp, {
+              nodeId: targetNodeId,
+              kind: "gate",
+              title: `Step Gate · ${toolName}`,
+              status: "waiting",
+            })
+          );
         }
 
         // 统一：将目标节点（原节点或 Gate 节点）设为等待状态，并挂载审批元数据
-        out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
-          nodeId: targetNodeId,
-          status: "blocked"
-        }));
-        out.push(this.wrap<NodePendingApprovalPayload>(event.runId, "node.pending_approval", event.timestamp, {
-          nodeId: targetNodeId,
-          toolName,
-          toolParams
-        }));
+        out.push(
+          this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
+            nodeId: targetNodeId,
+            status: "waiting",
+          })
+        );
+        out.push(
+          this.wrap<NodePendingApprovalPayload>(
+            event.runId,
+            "node.pending_approval",
+            event.timestamp,
+            {
+              nodeId: targetNodeId,
+              toolName,
+              toolParams,
+            }
+          )
+        );
       }
     }
 
-    if (event.type === "tool.gate.resolved") {
+    if (event.type === "tool.gate.resolved" || event.type === "node.approval.resolved") {
       const toolCallId = this.stringValue(event.payload?.toolCallId);
       const nodeId = this.stringValue(event.payload?.nodeId);
-      const action = this.stringValue(event.payload?.action) as "approve" | "edit" | "skip" | "abort";
+      const action = this.stringValue(event.payload?.approvalAction || event.payload?.action) as
+        | "approve"
+        | "edit"
+        | "skip"
+        | "abort";
 
-      if (toolCallId) {
-        const targetNodeId = nodeId || `gate:${toolCallId.slice(-8)}`;
+      if (nodeId || toolCallId) {
+        const targetNodeId =
+          nodeId || (toolCallId ? `gate:${toolCallId.slice(-8)}` : "unknown-gate");
         const statusMap: Record<string, NodeStatusPayload["status"]> = {
           approve: "running", // 审批通过后应恢复为 running 状态
           edit: "running",
           skip: "skipped",
-          abort: "fail"
+          abort: "fail",
         };
-        out.push(this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
-          nodeId: targetNodeId,
-          status: statusMap[action] ?? "success"
-        }));
-        out.push(this.wrap<NodeApprovalResolvedPayload>(event.runId, "node.approval.resolved", event.timestamp, {
-          nodeId: targetNodeId,
-          action
-        }));
+        out.push(
+          this.wrap<NodeStatusPayload>(event.runId, "node.status", event.timestamp, {
+            nodeId: targetNodeId,
+            status: statusMap[action] ?? "success",
+          })
+        );
+        out.push(
+          this.wrap<NodeApprovalResolvedPayload>(
+            event.runId,
+            "node.approval.resolved",
+            event.timestamp,
+            {
+              nodeId: targetNodeId,
+              action,
+            }
+          )
+        );
       }
     }
 
     // ── 旧版：weave.dag.detail（向后兼容） ────────────────────────────────────
-    if (event.type === "plugin.output" && this.stringValue(event.payload?.outputType) === "weave.dag.detail") {
+    if (
+      event.type === "plugin.output" &&
+      this.stringValue(event.payload?.outputType) === "weave.dag.detail"
+    ) {
       const parsed = this.safeJson(this.stringValue(event.payload?.outputText));
       if (parsed?.nodeId) {
-        out.push(this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
-          nodeId: String(parsed.nodeId),
-          outputPorts: [
-            {
-              name: "detail",
-              type: "text",
-              content: this.stringValue(parsed.text) || ""
-            }
-          ]
-        }));
+        out.push(
+          this.wrap<NodeIoPayload>(event.runId, "node.io", event.timestamp, {
+            nodeId: String(parsed.nodeId),
+            outputPorts: [
+              {
+                name: "detail",
+                type: "text",
+                content: this.stringValue(parsed.text) || "",
+              },
+            ],
+          })
+        );
       }
     }
 
     return out;
   }
 
-  private wrap<T>(runId: string, eventType: GraphEnvelope<T>["eventType"], timestamp: string, payload: T): GraphEnvelope<T> {
+  private wrap<T>(
+    runId: string,
+    eventType: GraphEnvelope<T>["eventType"],
+    timestamp: string,
+    payload: T
+  ): GraphEnvelope<T> {
     const current = this.seqByRun.get(runId) ?? 0;
     const next = current + 1;
     this.seqByRun.set(runId, next);
@@ -397,7 +503,7 @@ export class GraphProjector {
       dagId: this.dagIdByRun.get(runId) ?? runId,
       eventType,
       timestamp,
-      payload
+      payload,
     };
   }
 
@@ -440,7 +546,18 @@ export class GraphProjector {
   }
 
   private toNodeStatus(input: string): NodeStatusPayload["status"] {
-    const valid = new Set(["pending", "ready", "blocked", "running", "waiting", "retrying", "success", "fail", "skipped", "aborted"]);
+    const valid = new Set([
+      "pending",
+      "ready",
+      "blocked",
+      "running",
+      "waiting",
+      "retrying",
+      "success",
+      "fail",
+      "skipped",
+      "aborted",
+    ]);
     return valid.has(input) ? (input as NodeStatusPayload["status"]) : "pending";
   }
 

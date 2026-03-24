@@ -38,7 +38,7 @@ export function ApprovalPanel({ toolName, toolParams, gateId }: ApprovalPanelPro
       await sendRpc("gate.action", {
         gateId,
         action,
-        params
+        params,
       });
       // 成功后由后端广播流更新状态，前端会自动感知并关闭此面板
     } catch (err) {
@@ -62,15 +62,19 @@ export function ApprovalPanel({ toolName, toolParams, gateId }: ApprovalPanelPro
       {/* Header */}
       <div className="approval-header">
         <span className="approval-icon">
-          <span className="emoji-icon" style={{ fontSize: 16 }}>🛡️</span>
+          <span className="emoji-icon" style={{ fontSize: 16 }}>
+            🛡️
+          </span>
         </span>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           <span className="approval-title">🔐 Step Gate · 等待放行</span>
-          <span style={{
-            fontSize: 10,
-            color: "var(--text-muted)",
-            fontFamily: "var(--font-ui)",
-          }}>
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--text-muted)",
+              fontFamily: "var(--font-ui)",
+            }}
+          >
             AI 即将执行以下工具调用，请确认后放行
           </span>
         </div>
@@ -80,17 +84,19 @@ export function ApprovalPanel({ toolName, toolParams, gateId }: ApprovalPanelPro
         {/* 工具名称卡片 */}
         <div className="inspector-group">
           <div className="inspector-label">工具名称</div>
-          <div style={{
-            background: "rgba(255,171,94,0.1)",
-            border: "1px solid rgba(255,171,94,0.25)",
-            borderRadius: 8,
-            padding: "6px 10px",
-            color: "#ffab5e",
-            fontFamily: "var(--font-mono)",
-            fontSize: 12,
-            fontWeight: 600,
-            backgroundClip: "padding-box",
-          }}>
+          <div
+            style={{
+              background: "rgba(255,171,94,0.1)",
+              border: "1px solid rgba(255,171,94,0.25)",
+              borderRadius: 8,
+              padding: "6px 10px",
+              color: "#ffab5e",
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+              fontWeight: 600,
+              backgroundClip: "padding-box",
+            }}
+          >
             🛠️ {toolName}
           </div>
         </div>
@@ -102,7 +108,7 @@ export function ApprovalPanel({ toolName, toolParams, gateId }: ApprovalPanelPro
             value={editedParams}
             onChange={(e) => onParamsChange(e.target.value)}
             spellCheck={false}
-            rows={10}
+            rows={4}
             disabled={isSubmitting}
           />
           {jsonError && <div className="approval-error">⚠️ {jsonError}</div>}
@@ -122,11 +128,13 @@ export function ApprovalPanel({ toolName, toolParams, gateId }: ApprovalPanelPro
           </button>
           <button
             className="approval-btn edit"
-            onClick={() => { if (validateJson(editedParams)) handleAction("edit", editedParams); }}
+            onClick={() => {
+              if (validateJson(editedParams)) handleAction("edit", editedParams);
+            }}
             disabled={Boolean(jsonError) || !hasEdited || isSubmitting}
             title="使用编辑后的参数放行"
           >
-            ✏️ 编辑后放行
+            ✏️ 编辑
           </button>
         </div>
 
@@ -153,9 +161,7 @@ export function ApprovalPanel({ toolName, toolParams, gateId }: ApprovalPanelPro
         </div>
       </div>
 
-      <div className="approval-hint">
-        💡 可在 CLI 按 Enter · E · S · Q 操作
-      </div>
+      <div className="approval-hint">💡 可在 CLI 按 Enter · E · S · Q 操作</div>
     </div>
   );
 }
