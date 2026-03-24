@@ -101,6 +101,7 @@ export class AgentRuntime extends EventEmitter {
     insertWalEvent: () => {},
     getAncestorsWalEvents: () => [],
     getExecutionWalEvents: () => [],
+    getEdges: () => [],
   };
 
   private static readonly NOOP_LLM_CLIENT: ILlmClient = {
