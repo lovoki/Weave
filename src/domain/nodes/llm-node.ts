@@ -10,7 +10,7 @@ import type { NodeKind, GraphPort } from "../../core/engine/node-types.js";
 import { BaseNode } from "./base-node.js";
 import { ToolNode } from "./tool-node.js";
 import { FinalNode } from "./final-node.js";
-import type { RunContext } from "../../application/session/run-context.js";
+import type { IAgentNodeContext } from "../../contracts/agent.js";
 import { tryParseJson } from "../../core/utils/text-utils.js";
 
 export interface LlmNodeInit {
@@ -19,7 +19,7 @@ export interface LlmNodeInit {
   messages?: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 }
 
-export class LlmNode extends BaseNode<RunContext> {
+export class LlmNode extends BaseNode<IAgentNodeContext> {
   readonly kind: NodeKind = "llm";
 
   public readonly step: number;
@@ -48,7 +48,7 @@ export class LlmNode extends BaseNode<RunContext> {
     this.toolCalls = toolCalls?.length ? toolCalls : undefined;
   }
 
-  protected async doExecute(ctx: RunContext): Promise<void> {
+  protected async doExecute(ctx: IAgentNodeContext): Promise<void> {
     // 保存输入数据用于可视化
     this.systemPrompt = ctx.systemPrompt;
     this.messages = [...ctx.workingMessages];
@@ -199,7 +199,7 @@ export class LlmNode extends BaseNode<RunContext> {
     return { step: this.step };
   }
 
-  async getInputPorts(ctx: RunContext): Promise<GraphPort[]> {
+  async getInputPorts(ctx: IAgentNodeContext): Promise<GraphPort[]> {
     const ports: GraphPort[] = [];
     if (this.systemPrompt) {
       ports.push(await this.makePort(ctx, "systemPrompt", "text", this.systemPrompt));
@@ -210,7 +210,7 @@ export class LlmNode extends BaseNode<RunContext> {
     return ports;
   }
 
-  async getOutputPorts(ctx: RunContext): Promise<GraphPort[]> {
+  async getOutputPorts(ctx: IAgentNodeContext): Promise<GraphPort[]> {
     const ports: GraphPort[] = [];
     if (this.responseText !== undefined) {
       ports.push(await this.makePort(ctx, "responseText", "text", this.responseText));

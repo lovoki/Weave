@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Resizer } from './Resizer';
+import React, { useState } from "react";
+import { Resizer } from "./Resizer";
 
 function createModeButtonStyle(currentMode: "on" | "step", targetMode: "on" | "step") {
   const active = currentMode === targetMode;
@@ -8,12 +8,13 @@ function createModeButtonStyle(currentMode: "on" | "step", targetMode: "on" | "s
     padding: "6px 0",
     fontSize: 11,
     borderRadius: 6,
+    cursor: "pointer",
     background: active ? "var(--bg-surface)" : "transparent",
     color: active ? "var(--text-primary)" : "var(--text-muted)",
     border: active ? "1px solid var(--border-muted)" : "1px solid transparent",
     boxShadow: active ? "0 2px 4px rgba(0,0,0,0.2)" : "none",
     transition: "all var(--duration-fast)",
-    fontWeight: active ? 600 : 400
+    fontWeight: active ? 600 : 400,
   } as const;
 }
 
@@ -36,7 +37,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   setWeaveMode,
   activeRunId,
   onPause,
-  onResume
+  onResume,
 }) => {
   const [controlsExpanded, setControlsExpanded] = useState(true);
   const [inspectorExpanded, setInspectorExpanded] = useState(true);
@@ -56,7 +57,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
         width: isCollapsed ? "36px" : "var(--panel-right-width, 26%)",
         transition: "var(--transition-layout)",
         display: "flex",
-        flexDirection: "column"
+        flexDirection: "column",
       }}
     >
       <button
@@ -97,26 +98,46 @@ export const RightPanel: React.FC<RightPanelProps> = ({
       {!isCollapsed && (
         <>
           <Resizer side="right" defaultWidth={320} isCollapsed={isCollapsed} />
-          <aside className="inspector-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-            
+          <aside
+            className="inspector-panel"
+            style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}
+          >
             {/* 执行控制区块 */}
             <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
-              <div 
-                className="panel-title" 
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none" }}
+              <div
+                className="panel-title"
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  userSelect: "none",
+                }}
                 onClick={() => setControlsExpanded(!controlsExpanded)}
               >
                 <span>⚙️ 执行控制 (Controls)</span>
                 <span style={{ fontSize: 10 }}>{controlsExpanded ? "▼" : "◀"}</span>
               </div>
-              
-              <div style={{ 
-                overflow: "hidden", 
-                transition: "max-height 0.3s ease", 
-                maxHeight: controlsExpanded ? "200px" : "0",
-                padding: controlsExpanded ? "12px 16px 0" : "0 16px"
-              }}>
-                <div style={{ display: "flex", gap: 8, marginBottom: 12, background: "var(--bg-raised)", padding: 4, borderRadius: 8, border: "1px solid var(--border-muted)" }}>
+
+              <div
+                style={{
+                  overflow: "hidden",
+                  transition: "max-height 0.3s ease",
+                  maxHeight: controlsExpanded ? "200px" : "0",
+                  padding: controlsExpanded ? "12px 16px 0" : "0 16px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginBottom: 12,
+                    background: "var(--bg-raised)",
+                    padding: 4,
+                    borderRadius: 8,
+                    border: "1px solid var(--border-muted)",
+                  }}
+                >
                   <button
                     onClick={() => setWeaveMode("on")}
                     style={createModeButtonStyle(weaveMode, "on")}
@@ -153,69 +174,108 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             </div>
 
             {/* 节点检查区块 */}
-            <div style={{ display: "flex", flexDirection: "column", flex: inspectorExpanded ? 1 : "0 0 auto", minHeight: 0 }}>
-              <div 
-                className="panel-title" 
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 0, borderTop: "1px solid var(--border-muted)", paddingTop: 10, cursor: "pointer", userSelect: "none" }}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                flex: inspectorExpanded ? 1 : "0 0 auto",
+                minHeight: 0,
+              }}
+            >
+              <div
+                className="panel-title"
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginTop: 0,
+                  borderTop: "1px solid var(--border-muted)",
+                  paddingTop: 10,
+                  cursor: "pointer",
+                  userSelect: "none",
+                }}
                 onClick={() => setInspectorExpanded(!inspectorExpanded)}
               >
                 <span>🔍 节点检查 (Inspector)</span>
                 <span style={{ fontSize: 10 }}>{inspectorExpanded ? "▼" : "◀"}</span>
               </div>
-              
-              <div className="inspector-content" style={{ 
-                flex: 1, 
-                overflowY: "auto", 
-                display: inspectorExpanded ? "block" : "none" 
-              }}>
+
+              <div
+                className="inspector-content"
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  display: inspectorExpanded ? "block" : "none",
+                }}
+              >
                 {children}
               </div>
             </div>
 
             {/* 编排区块 */}
-            <div className="orchestrate-section" style={{ 
-              marginTop: "auto", 
-              borderTop: "1px solid var(--border-muted)",
-              padding: "0"
-            }}>
-              <div 
-                className="orchestrate-title" 
-                style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none", marginBottom: 0 }}
+            <div
+              className="orchestrate-section"
+              style={{
+                marginTop: "auto",
+                borderTop: "1px solid var(--border-muted)",
+                padding: "0",
+              }}
+            >
+              <div
+                className="orchestrate-title"
+                style={{
+                  padding: "10px 14px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  userSelect: "none",
+                  marginBottom: 0,
+                }}
                 onClick={() => setOrchestrateExpanded(!orchestrateExpanded)}
               >
                 <span>🔒 编排</span>
                 <span style={{ fontSize: 10 }}>{orchestrateExpanded ? "▼" : "▲"}</span>
               </div>
-              
-              <div style={{ 
-                display: orchestrateExpanded ? "flex" : "none", 
-                flexDirection: "column", 
-                gap: 7, 
-                padding: "0 14px 12px" 
-              }}>
-                <button className="orchestrate-btn" disabled>➕ 添加节点</button>
-                <button className="orchestrate-btn" disabled>✏️ 编辑结构</button>
-                <button className="orchestrate-btn" disabled>🔁 从此节点重跑</button>
+
+              <div
+                style={{
+                  display: orchestrateExpanded ? "flex" : "none",
+                  flexDirection: "column",
+                  gap: 7,
+                  padding: "0 14px 12px",
+                }}
+              >
+                <button className="orchestrate-btn" disabled>
+                  ➕ 添加节点
+                </button>
+                <button className="orchestrate-btn" disabled>
+                  ✏️ 编辑结构
+                </button>
+                <button className="orchestrate-btn" disabled>
+                  🔁 从此节点重跑
+                </button>
                 <p className="orchestrate-hint">🔒 即将推出</p>
               </div>
             </div>
-            
           </aside>
         </>
       )}
 
       {isCollapsed && (
-        <span style={{
-          writingMode: "vertical-rl",
-          fontSize: 8,
-          letterSpacing: "0.14em",
-          color: "var(--text-muted)",
-          marginTop: 48,
-          fontWeight: 700,
-          display: 'block',
-          textAlign: 'center',
-          width: '100%'
-        }}>
+        <span
+          style={{
+            writingMode: "vertical-rl",
+            fontSize: 8,
+            letterSpacing: "0.14em",
+            color: "var(--text-muted)",
+            marginTop: 48,
+            fontWeight: 700,
+            display: "block",
+            textAlign: "center",
+            width: "100%",
+          }}
+        >
           INFO
         </span>
       )}

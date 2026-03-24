@@ -21,12 +21,12 @@ import type {
   NodeMetrics,
   NodeError,
   GraphPort,
-  BaseNodePayload
+  BaseNodePayload,
 } from "../../core/engine/node-types.js";
 import { safeClone } from "./safe-serialize.js";
 import type { EngineContext } from "../../core/engine/engine-types.js";
 import type { DagNodeStatus } from "../../core/engine/dag-graph.js";
-import type { FrozenSnapshot } from "../../infrastructure/storage/snapshot-store.js";
+import type { FrozenSnapshot } from "../../contracts/engine.js";
 
 export abstract class BaseNode<C extends EngineContext = any> {
   abstract readonly kind: NodeKind;
@@ -72,7 +72,10 @@ export abstract class BaseNode<C extends EngineContext = any> {
     interface ContextWithCapabilities {
       interceptor?: {
         shouldIntercept(node: BaseNode<any>, ctx: C): boolean | Promise<boolean>;
-        waitForApproval(node: BaseNode<any>, ctx: C): Promise<{ action: string; editedArgs?: Record<string, unknown> }>;
+        waitForApproval(
+          node: BaseNode<any>,
+          ctx: C
+        ): Promise<{ action: string; editedArgs?: Record<string, unknown> }>;
       };
       bus?: {
         dispatch(type: string, payload: unknown): void;
@@ -109,7 +112,10 @@ export abstract class BaseNode<C extends EngineContext = any> {
             case "edit":
               // 🛡️ 防御畸形指令：edit 必须携带 editedArgs
               if (!decision.editedArgs) {
-                ctx.logger?.warn("interceptor.edit.missing_args", "收到 edit 指令但缺少 editedArgs，打回重审");
+                ctx.logger?.warn(
+                  "interceptor.edit.missing_args",
+                  "收到 edit 指令但缺少 editedArgs，打回重审"
+                );
                 continue;
               }
               {
@@ -117,7 +123,7 @@ export abstract class BaseNode<C extends EngineContext = any> {
                 if (!validation.ok) {
                   runCtx.bus?.dispatch("node.validation_error", {
                     nodeId: this.id,
-                    errors: validation.errors
+                    errors: validation.errors,
                   });
                   continue; // 校验失败，循环回到 waitForApproval
                 }
@@ -134,7 +140,10 @@ export abstract class BaseNode<C extends EngineContext = any> {
 
             default:
               // 🛡️ 防御未知指令：一律打回重审
-              ctx.logger?.warn("interceptor.unknown_action", `未知拦截决策: ${(decision as any).action}，继续挂起`);
+              ctx.logger?.warn(
+                "interceptor.unknown_action",
+                `未知拦截决策: ${(decision as any).action}，继续挂起`
+              );
               continue;
           }
         }
@@ -159,7 +168,6 @@ export abstract class BaseNode<C extends EngineContext = any> {
 
       // 8. 快照触发：success 状态
       this.emitSnapshot(ctx, "success");
-
     } catch (error: any) {
       // 识别 Abort 信号 → 内部自降级
       if (error.name === "AbortError" || ctx.abortSignal?.aborted) {
@@ -195,7 +203,8 @@ export abstract class BaseNode<C extends EngineContext = any> {
 
   /** 子类可覆盖：用 Tool Schema 校验编辑参数 */
   protected validateEditedArgs(
-    _args: Record<string, unknown>, _ctx: C
+    _args: Record<string, unknown>,
+    _ctx: C
   ): { ok: true } | { ok: false; errors: string[] } {
     return { ok: true };
   }
@@ -224,7 +233,7 @@ export abstract class BaseNode<C extends EngineContext = any> {
     this.error = {
       name: err.name,
       message: err.message,
-      stack: "stack" in err ? err.stack : undefined
+      stack: "stack" in err ? err.stack : undefined,
     };
   }
 
@@ -262,7 +271,7 @@ export abstract class BaseNode<C extends EngineContext = any> {
     const currentToken = ++this.lastHydrationToken;
 
     void this.hydrateSnapshot(ctx, this.freezeSnapshot())
-      .then(fullPayload => {
+      .then((fullPayload) => {
         // 🛡️ 时序防御：若已有更新的状态流转，丢弃过期数据
         if (this.lastHydrationToken !== currentToken) return;
         if (
@@ -271,19 +280,23 @@ export abstract class BaseNode<C extends EngineContext = any> {
           fullPayload.error ||
           Object.keys(fullPayload.metrics ?? {}).length > 0
         ) {
-          ctx.dag.getEngineEventBus()?.onNodeIo(
-            this.id,
-            fullPayload.inputPorts,
-            fullPayload.outputPorts,
-            fullPayload.error,
-            fullPayload.metrics
-          );
+          ctx.dag
+            .getEngineEventBus()
+            ?.onNodeIo(
+              this.id,
+              fullPayload.inputPorts,
+              fullPayload.outputPorts,
+              fullPayload.error,
+              fullPayload.metrics
+            );
         }
       })
       .catch((err: Error) => {
         // 🛡️ 绝不静音：记录日志便于排查 BlobStore 故障
-        ctx.logger?.error("node.io.hydration.failed",
-          `节点 ${this.id} 异步端口装配失败: ${err.message}`);
+        ctx.logger?.error(
+          "node.io.hydration.failed",
+          `节点 ${this.id} 异步端口装配失败: ${err.message}`
+        );
       });
   }
 
@@ -303,7 +316,7 @@ export abstract class BaseNode<C extends EngineContext = any> {
       completedAt: this.completedAt,
       error: this.error,
       metrics: { ...this.metrics },
-      ...this.getSpecificFields()
+      ...this.getSpecificFields(),
     });
   }
 
@@ -314,7 +327,7 @@ export abstract class BaseNode<C extends EngineContext = any> {
     return {
       ...frozen,
       inputPorts: inputPorts.length > 0 ? inputPorts : undefined,
-      outputPorts: outputPorts.length > 0 ? outputPorts : undefined
+      outputPorts: outputPorts.length > 0 ? outputPorts : undefined,
     } as BaseNodePayload;
   }
 
@@ -328,13 +341,15 @@ export abstract class BaseNode<C extends EngineContext = any> {
       nodeId: this.id,
       fromStatus,
       toStatus,
-      frozen
+      frozen,
     });
 
     // 异步装配不阻塞主流程
-    this.hydrateSnapshot(ctx, frozen).then(payload => {
-      ctx.snapshotStore?.hydrateEntry(seq, payload);
-    }).catch(() => {});
+    this.hydrateSnapshot(ctx, frozen)
+      .then((payload) => {
+        ctx.snapshotStore?.hydrateEntry(seq, payload);
+      })
+      .catch(() => {});
   }
 
   // ── 序列化 ─────────────────────────────────────────────────────────────────
@@ -362,7 +377,7 @@ export abstract class BaseNode<C extends EngineContext = any> {
       metrics: Object.keys(this.metrics).length > 0 ? { ...this.metrics } : undefined,
       inputPorts: inputPorts.length > 0 ? inputPorts : undefined,
       outputPorts: outputPorts.length > 0 ? outputPorts : undefined,
-      ...this.getSpecificFields()
+      ...this.getSpecificFields(),
     };
 
     return safeClone(raw);

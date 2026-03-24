@@ -6,9 +6,9 @@
 
 import type { NodeKind, GraphPort } from "../../core/engine/node-types.js";
 import { BaseNode } from "./base-node.js";
-import type { RunContext } from "../../application/session/run-context.js";
+import type { EngineContext } from "../../core/engine/engine-types.js";
 
-export class FinalNode extends BaseNode<RunContext> {
+export class FinalNode extends BaseNode<EngineContext> {
   readonly kind: NodeKind = "final";
 
   private responseText: string;
@@ -32,11 +32,11 @@ export class FinalNode extends BaseNode<RunContext> {
     this.completedAt = new Date().toISOString();
   }
 
-  protected async doExecute(ctx: RunContext): Promise<void> {
+  protected async doExecute(ctx: EngineContext): Promise<void> {
     // 从 stateStore 尝试解析最终文本（DAG 数据边传递）
     const dagInput = ctx.stateStore.resolveNodeInput(ctx.dag, this.id);
-    const finalText = this.responseText ||
-      (typeof dagInput.finalText === "string" ? dagInput.finalText : "");
+    const finalText =
+      this.responseText || (typeof dagInput.finalText === "string" ? dagInput.finalText : "");
 
     this.responseText = finalText;
 
@@ -54,11 +54,11 @@ export class FinalNode extends BaseNode<RunContext> {
     return this.responseText !== undefined ? { text: this.responseText.slice(0, 200) } : {};
   }
 
-  async getInputPorts(_ctx: RunContext): Promise<GraphPort[]> {
+  async getInputPorts(_ctx: EngineContext): Promise<GraphPort[]> {
     return [];
   }
 
-  async getOutputPorts(ctx: RunContext): Promise<GraphPort[]> {
+  async getOutputPorts(ctx: EngineContext): Promise<GraphPort[]> {
     if (!this.responseText) return [];
     return [await this.makePort(ctx, "responseText", "text", this.responseText)];
   }

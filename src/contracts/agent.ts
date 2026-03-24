@@ -4,6 +4,10 @@
  */
 
 import { z } from "zod";
+import type OpenAI from "openai";
+import type { EngineContext } from "../core/engine/engine-types.js";
+import type { IAgentEventBus } from "./engine.js";
+import type { IToolRegistry as ICoreToolRegistry } from "../core/ports/tool-registry.js";
 
 // ─── LLM 客户端接口 ──────────────────────────────────────────────────────────
 
@@ -49,7 +53,7 @@ export interface ILlmClient {
       abortSignal?: AbortSignal;
     },
     options?: { onDelta?: (delta: string) => void }
-  ): Promise<unknown>;
+  ): Promise<OpenAI.Chat.Completions.ChatCompletionMessage>;
 }
 
 // ─── 工具注册表接口 ──────────────────────────────────────────────────────────
@@ -198,4 +202,44 @@ export interface AgentLoopPlugin {
     userInput: string;
     errorMessage: string;
   }) => Promise<AgentPluginOutputs> | AgentPluginOutputs;
+}
+
+// ─── 智能体节点执行上下文契约 ─────────────────────────────────────────────────
+
+/**
+ * domain 节点（LlmNode、ToolNode、FinalNode）执行时所需的完整上下文契约。
+ * 扩展自 EngineContext，叠加智能体层依赖（LLM/工具/消息/事件总线）。
+ *
+ * RunContext（application 层）通过 TypeScript 结构类型自动满足此接口。
+ * domain 节点 import 此接口而非 RunContext，消除 domain → application 跨层依赖。
+ *
+ * ⛔️ 不包含 Step Gate 字段（interceptor/pendingRegistry/approveToolCall）：
+ *    这些属于 Layer 3 人机交互层，引擎 / domain 层不能感知。
+ *
+ * @example
+ * class LlmNode extends BaseNode<IAgentNodeContext> {
+ *   protected async doExecute(ctx: IAgentNodeContext) { ... }
+ * }
+ */
+export interface IAgentNodeContext extends EngineContext {
+  // ── 会话标识 ────────────────────────────────────────────────────────────────
+  sessionId: string;
+  turnIndex: number;
+
+  // ── LLM 与工具 ──────────────────────────────────────────────────────────────
+  llmClient: ILlmClient;
+  /** 使用核心层 IToolRegistry（含精确的 resolve/listModelTools 类型），非 contracts 版 */
+  toolRegistry: ICoreToolRegistry;
+
+  // ── 消息历史 ────────────────────────────────────────────────────────────────
+  workingMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+  // ── 提示词与限制 ─────────────────────────────────────────────────────────────
+  systemPrompt: string;
+  defaultToolRetries: number;
+  defaultToolTimeoutMs: number;
+  maxSteps: number;
+
+  // ── 事件分发 ─────────────────────────────────────────────────────────────────
+  bus: IAgentEventBus;
 }

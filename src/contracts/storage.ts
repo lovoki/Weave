@@ -113,6 +113,8 @@ export { FrozenSnapshotSchema, SnapshotEntrySchema };
  */
 export interface ISnapshotStore {
   appendFrozen(entry: Omit<import("./engine.js").SnapshotEntry, "seq" | "payload">): number;
+  /** 异步装配：补充 Blob 数据到已有快照条目（节点执行完成后调用） */
+  hydrateEntry(seq: number, payload: Record<string, unknown>): Promise<void>;
   getAll(): import("./engine.js").SnapshotEntry[];
   getByNodeId(nodeId: string): import("./engine.js").SnapshotEntry[];
   getLatestByNodeId(nodeId: string): import("./engine.js").SnapshotEntry | undefined;

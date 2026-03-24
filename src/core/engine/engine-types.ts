@@ -7,7 +7,7 @@
 
 import type { DagExecutionGraph } from "./dag-graph.js";
 import type { DagStateStore } from "./state-store.js";
-import type { SnapshotStore } from "../../infrastructure/storage/snapshot-store.js";
+import type { ISnapshotStore } from "../../contracts/storage.js";
 import type { ILogger } from "../ports/logger.js";
 import type { IBlobStore } from "../ports/blob-store.js";
 
@@ -26,7 +26,7 @@ export interface EngineContext {
   /** Map<nodeId, BaseNode<any>> — 避免与 base-node 循环导入，使用 any */
   nodeRegistry: Map<string, any>;
   stateStore: DagStateStore;
-  snapshotStore?: SnapshotStore;
+  snapshotStore?: ISnapshotStore;
   logger: ILogger;
   blobStore?: IBlobStore;
   /** 暂停信号量，用于在调度 Tick 开始前挂起执行 */

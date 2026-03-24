@@ -34,21 +34,25 @@ async function main(): Promise<void> {
   };
 
   const runtimeBridge = await createRuntimeBridge({
-    onRuntimeEvent: forward
+    onRuntimeEvent: forward,
   });
 
   gateway.registerRuntimeIngestHandler(forward);
   gateway.registerRunCommandHandlers({
-    startRun: async (payload) => runtimeBridge.startRun({
-      userInput: payload.userInput,
-      sessionId: payload.sessionId ?? "",
-      clientRequestId: payload.clientRequestId,
-      stepMode: payload.mode === "step"
-    }),
+    startRun: async (payload) => {
+      const anyPayload = payload as any;
+      return runtimeBridge.startRun({
+        userInput: payload.userInput,
+        sessionId: payload.sessionId ?? "",
+        clientRequestId: payload.clientRequestId,
+        stepMode: anyPayload.stepMode === true || payload.mode === "step",
+      });
+    },
     abortRun: async (runId) => runtimeBridge.abortRun(runId),
     pauseRun: async (runId) => runtimeBridge.pauseRun(runId),
     resumeRun: async (runId) => runtimeBridge.resumeRun(runId),
-    resumeNodeGate: async (runId, nodeId, decision) => runtimeBridge.resumeNodeGate(runId, nodeId, decision),
+    resumeNodeGate: async (runId, nodeId, decision) =>
+      runtimeBridge.resumeNodeGate(runId, nodeId, decision),
     replayRunEvents: async (runId) => {
       if (!runtimeBridge.loadRunEvents) {
         return null;
@@ -62,7 +66,7 @@ async function main(): Promise<void> {
       const replayProjector = new GraphProjector();
       const rebuilt = loaded.events.flatMap((evt) => replayProjector.project(evt));
       return rebuilt;
-    }
+    },
   });
 }
 

@@ -1,3 +1,4 @@
+// TODO P1-1 后续：AgentLoopPlugin 定义迁移至 contracts 后再消除此 import
 import type { AgentLoopPlugin } from "../../application/agent/plugins/agent-plugin.js";
 
 /**

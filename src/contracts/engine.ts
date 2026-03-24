@@ -113,6 +113,19 @@ export interface IPauseSignal {
   isPaused(): boolean;
 }
 
+// ─── 智能体事件总线（最小接口）────────────────────────────────────────────────
+
+/**
+ * 智能体事件分发接口 — domain 节点（ToolNode 等）用于发射工具执行事件。
+ * WeaveEventBus 通过 TypeScript 结构类型自动满足此接口，无需显式 implements。
+ *
+ * @example
+ * ctx.bus.dispatch("tool.execution.start", { toolName: "read_file", sessionId: "s1" });
+ */
+export interface IAgentEventBus {
+  dispatch(type: string, payload?: Record<string, unknown>): void;
+}
+
 // ─── 快照类型 ────────────────────────────────────────────────────────────────
 
 /**

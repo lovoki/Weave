@@ -319,8 +319,6 @@
     margin-top: auto;
     padding: 12px 14px;
     border-top: 1px solid var(--border-dim);
-    opacity: 0.38;
-    pointer-events: none;
     display: flex;
     flex-direction: column;
     gap: 7px;
@@ -344,8 +342,28 @@
     border-radius: var(--radius-md);
     padding: 8px 12px;
     font-size: 12px;
-    cursor: not-allowed;
+    cursor: pointer;
     font-family: var(--font-ui);
+    transition: all var(--duration-fast);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .orchestrate-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    border-color: var(--border-muted);
+  }
+
+  .orchestrate-btn:active:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(1px);
+  }
+
+  .orchestrate-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .orchestrate-hint {
