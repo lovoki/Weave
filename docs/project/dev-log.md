@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-03-24 · Entry 014 · P0-1 完成：61 个 BDD 测试全绿 + node:sqlite Vite 兼容修复
+
+### 变更范围
+- `vitest.config.ts`（新增 `resolve.alias` 绕过 Vite 5 的 `node:sqlite` 解析 Bug）
+- `scripts/sqlite-shim.cjs`（新建：CJS shim，用 `createRequire` 在运行时加载真实内置模块）
+- `src/core/__tests__/dag-engine.spec.ts`（19 个测试全部填充实现）
+- `src/domain/__tests__/nodes.spec.ts`（13 个测试全部填充实现）
+- `src/application/__tests__/agent-runtime.spec.ts`（14 个测试全部填充实现）
+- `src/infrastructure/__tests__/wal.spec.ts`（15 个测试全部填充实现）
+- `src/infrastructure/storage/snapshot-store.ts`（补全 `getByNodeId`、`getLatestByNodeId`、`getAll` 方法）
+- `src/infrastructure/wal/weave-wal-manager.ts`（添加 `closed` 守卫，`destroy()` 后拒绝写入）
+
+### 做了什么
+- 填充全部 61 个 BDD 测试骨架，覆盖 DAG 状态机、节点生命周期、插件系统、WAL 持久化四大领域
+- 修复 Vite 5 剥离 `node:` 前缀导致 Node.js 24 内置 `node:sqlite` 无法被 Vitest 加载的 Bug
+  - 解决方案：`resolve.alias` 将 `node:sqlite` 重定向至 `scripts/sqlite-shim.cjs`，shim 内用 `createRequire` 绕过 Vite 静态 import 变换
+- 补全 `SnapshotStore` 缺失的接口方法（`ISnapshotStore` 契约要求但实现中未包含）
+- 为 `WeaveWalManager` 添加关闭守卫（销毁后调用 `intercept()` 抛出明确错误，杜绝静默丢弃）
+- 修复测试 node 类签名错误（`getInputPorts`/`getOutputPorts` 缺少 `ctx` 参数导致 TS 类型报错）
+
+### 为什么这样做
+P0-1 测试工程是工业化重构的核心里程碑。61 个测试全绿意味着架构约束（DAG 状态机语义、节点拦截器、插件隔离、WAL 并发写入）均有自动化验证保障，后续 P1-x 重构不会退化。
+
+### 关键决策
+- `node:sqlite` Vite 兼容：选择 CJS shim 而非 `vi.mock` 工厂（后者需要在每个测试文件重复配置，且 mock 工厂本身也依赖 Vite 变换）；shim 方案一次配置、全局生效，且不影响生产构建路径（`vitest.config.ts` 中的 `resolve.alias` 仅对测试运行时生效）
+
+---
+
 ## 2026-03-24 · Entry 013 · 工业级重构基础设施初始化：ESLint + Vitest + src/contracts/ + AI Coding 方法论
 
 ### 变更范围
