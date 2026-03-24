@@ -13,7 +13,7 @@ import type {
   NodeApprovalResolvedPayload,
   RunSubscribePayload,
   RunStartPayload,
-  NodeIoPayload
+  NodeIoPayload,
 } from "../types/graph-events";
 import { RpcPendingManager } from "../lib/rpc-pending-manager";
 
@@ -46,7 +46,12 @@ interface GraphState {
   applyActiveNodeChanges: (changes: NodeChange[]) => void;
   clearPendingApproval: () => void;
   resetRunForResync: (runId: string) => void;
-  createDraftRun: (dagId: string, runId: string, userInputSummary: string, sessionId?: string) => void;
+  createDraftRun: (
+    dagId: string,
+    runId: string,
+    userInputSummary: string,
+    sessionId?: string
+  ) => void;
   sendRpc: <T = unknown>(type: string, payload: unknown) => Promise<T>;
 }
 
@@ -69,7 +74,7 @@ export const cancelRpcRequest = (reqId: string, reason = "RPC Canceled") => {
 export const resolveRpc = (reqId: string, ok: boolean, error?: string, payload?: any) => {
   const req = pendingManager.consume(reqId);
   if (!req) return;
-  
+
   if (ok) {
     req.resolve(payload);
   } else {
@@ -88,7 +93,7 @@ export const resolveRpc = (reqId: string, ok: boolean, error?: string, payload?:
         const retryEnvelope = {
           type: "run.subscribe",
           reqId: retryReqId,
-          payload: retryPayload
+          payload: retryPayload,
         };
 
         pendingManager.register(retryReqId, {
@@ -96,10 +101,12 @@ export const resolveRpc = (reqId: string, ok: boolean, error?: string, payload?:
           reject: req.reject,
           type: "run.subscribe",
           payload: retryPayload,
-          resyncRetried: true
+          resyncRetried: true,
         });
 
-        window.dispatchEvent(new CustomEvent("weave:rpc:send", { detail: { envelope: retryEnvelope } }));
+        window.dispatchEvent(
+          new CustomEvent("weave:rpc:send", { detail: { envelope: retryEnvelope } })
+        );
         return;
       }
     }
@@ -128,13 +135,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       latestSeq: 0,
       seenEventIds: {},
       lockedNodeIds: [],
-      updatedAt: timestamp
+      updatedAt: timestamp,
     };
 
     set((state) => ({
       dags: { ...state.dags, [dagId]: next },
       dagOrder: state.dagOrder.includes(dagId) ? state.dagOrder : [dagId, ...state.dagOrder],
-      activeDagId: state.activeDagId || dagId
+      activeDagId: state.activeDagId || dagId,
     }));
 
     return next;
@@ -150,7 +157,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             runId,
             sessionId: sessionId ?? existing.sessionId,
             userInputSummary,
-            updatedAt: now
+            updatedAt: now,
           }
         : {
             dagId,
@@ -162,13 +169,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             latestSeq: 0,
             seenEventIds: {},
             lockedNodeIds: [],
-            updatedAt: now
+            updatedAt: now,
           };
 
       return {
         dags: { ...state.dags, [dagId]: next },
         dagOrder: state.dagOrder.includes(dagId) ? state.dagOrder : [dagId, ...state.dagOrder],
-        activeDagId: dagId
+        activeDagId: dagId,
       };
     });
   },
@@ -194,14 +201,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           return {
             dags: nextDags,
             dagOrder: nextOrder,
-            activeDagId: state.activeDagId === evt.runId ? evt.dagId : state.activeDagId
+            activeDagId: state.activeDagId === evt.runId ? evt.dagId : state.activeDagId,
           };
         });
       } else if (draft && target) {
         const isDraftPlaceholder =
-          draft.nodes.length === 0 &&
-          draft.edges.length === 0 &&
-          draft.runId === target.runId;
+          draft.nodes.length === 0 && draft.edges.length === 0 && draft.runId === target.runId;
 
         if (isDraftPlaceholder) {
           set((state) => {
@@ -226,7 +231,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             return {
               dags: nextDags,
               dagOrder: state.dagOrder.filter((id) => id !== evt.runId),
-              activeDagId: state.activeDagId === evt.runId ? evt.dagId : state.activeDagId
+              activeDagId: state.activeDagId === evt.runId ? evt.dagId : state.activeDagId,
             };
           });
         }
@@ -250,11 +255,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         lastEventId: evt.eventId,
         seenEventIds: {
           ...prev.seenEventIds,
-          ...(evt.eventId ? { [evt.eventId]: true } : {})
+          ...(evt.eventId ? { [evt.eventId]: true } : {}),
         },
         updatedAt: evt.timestamp,
         nodes: [...prev.nodes],
-        edges: [...prev.edges]
+        edges: [...prev.edges],
       };
 
       if (evt.eventType === "run.start") {
@@ -282,8 +287,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             data: {
               title: payload.title,
               kind: payload.kind,
-              dependencies: payload.dependencies
-            }
+              dependencies: payload.dependencies,
+            },
           });
         } else {
           dag.nodes[nodeIndex] = {
@@ -292,8 +297,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
               ...dag.nodes[nodeIndex].data,
               title: payload.title,
               kind: payload.kind,
-              dependencies: payload.dependencies ?? dag.nodes[nodeIndex].data.dependencies
-            }
+              dependencies: payload.dependencies ?? dag.nodes[nodeIndex].data.dependencies,
+            },
           };
         }
 
@@ -303,14 +308,20 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             dag.edges.push({
               id: edgeId,
               source: payload.parentId,
-              target: payload.nodeId
+              target: payload.nodeId,
             });
           }
         }
       }
 
       if (evt.eventType === "edge.upsert") {
-        const payload = evt.payload as { edgeId: string; source: string; target: string; label?: string; edgeKind?: string };
+        const payload = evt.payload as {
+          edgeId: string;
+          source: string;
+          target: string;
+          label?: string;
+          edgeKind?: string;
+        };
         if (!dag.edges.some((e) => e.id === payload.edgeId)) {
           dag.edges.push({
             id: payload.edgeId,
@@ -318,7 +329,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             target: payload.target,
             label: payload.label,
             data: payload.edgeKind ? { edgeKind: payload.edgeKind } : undefined,
-            style: payload.edgeKind === "retry" ? { strokeDasharray: "4 4", stroke: "#f59e0b" } : undefined
+            style:
+              payload.edgeKind === "retry"
+                ? { strokeDasharray: "4 4", stroke: "#f59e0b" }
+                : undefined,
           });
         }
       }
@@ -326,9 +340,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       if (evt.eventType === "node.status") {
         const payload = evt.payload as { nodeId: string; status: string };
         dag.nodes = dag.nodes.map((n) =>
-          n.id === payload.nodeId
-            ? { ...n, data: { ...n.data, status: payload.status } }
-            : n
+          n.id === payload.nodeId ? { ...n, data: { ...n.data, status: payload.status } } : n
         );
       }
 
@@ -352,8 +364,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
               outputPorts: mergedOut,
               subtitle,
               error: payload.error ?? n.data.error,
-              metrics: payload.metrics ? { ...n.data.metrics, ...payload.metrics } : n.data.metrics
-            }
+              metrics: payload.metrics ? { ...n.data.metrics, ...payload.metrics } : n.data.metrics,
+            },
           };
         });
       }
@@ -371,11 +383,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
                 data: {
                   ...n.data,
                   pendingApproval: true,
-                  approvalPayload: { toolName: payload.toolName, toolParams: payload.toolParams }
-                }
+                  approvalPayload: { toolName: payload.toolName, toolParams: payload.toolParams },
+                },
               }
             : n
         );
+        dag.selectedNodeId = payload.nodeId; // 自动选中阻塞节点
         nextPendingApprovalNodeId = payload.nodeId;
         nextPendingApprovalPayload = { toolName: payload.toolName, toolParams: payload.toolParams };
       }
@@ -393,7 +406,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         }
       }
 
-      const nextOrder = state.dagOrder.includes(evt.dagId) ? state.dagOrder : [evt.dagId, ...state.dagOrder];
+      const nextOrder = state.dagOrder.includes(evt.dagId)
+        ? state.dagOrder
+        : [evt.dagId, ...state.dagOrder];
       const nextActiveDagId =
         evt.eventType === "run.start" || evt.eventType === "node.pending_approval"
           ? evt.dagId
@@ -404,7 +419,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         dagOrder: nextOrder,
         activeDagId: nextActiveDagId,
         pendingApprovalNodeId: nextPendingApprovalNodeId,
-        pendingApprovalPayload: nextPendingApprovalPayload
+        pendingApprovalPayload: nextPendingApprovalPayload,
       };
     });
   },
@@ -422,8 +437,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       return {
         dags: {
           ...state.dags,
-          [activeDagId]: { ...dag, selectedNodeId: nodeId }
-        }
+          [activeDagId]: { ...dag, selectedNodeId: nodeId },
+        },
       };
     });
   },
@@ -441,7 +456,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         .filter((id): id is string => Boolean(id));
 
       let nextSelectedNodeId = dag.selectedNodeId;
-      const explicitSelected = changes.find((change) => change.type === "select" && change.selected);
+      const explicitSelected = changes.find(
+        (change) => change.type === "select" && change.selected
+      );
       if (explicitSelected && "id" in explicitSelected) {
         nextSelectedNodeId = explicitSelected.id;
       }
@@ -453,9 +470,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             ...dag,
             selectedNodeId: nextSelectedNodeId,
             nodes: applyNodeChanges(changes, dag.nodes),
-            lockedNodeIds: Array.from(new Set([...dag.lockedNodeIds, ...movedIds]))
-          }
-        }
+            lockedNodeIds: Array.from(new Set([...dag.lockedNodeIds, ...movedIds])),
+          },
+        },
       };
     });
   },
@@ -479,7 +496,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           edges: [],
           selectedNodeId: undefined,
           lockedNodeIds: [],
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         };
       }
 
@@ -490,7 +507,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       return {
         dags: nextDags,
         pendingApprovalNodeId: null,
-        pendingApprovalPayload: null
+        pendingApprovalPayload: null,
       };
     });
   },
@@ -504,13 +521,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         reject,
         type,
         payload,
-        resyncRetried: false
+        resyncRetried: false,
       });
 
       // 触发自定义事件，由 App.tsx 中的 WebSocket 监听并发送（真正发出后再开始超时计时）。
       window.dispatchEvent(new CustomEvent("weave:rpc:send", { detail: { envelope } }));
     });
-  }
+  },
 }));
 
 // ─── 辅助函数 ──────────────────────────────────────────────────────────────
@@ -532,7 +549,7 @@ function mergePorts(existing?: GraphPort[], incoming?: GraphPort[]): GraphPort[]
       map.set(port.name, {
         ...existingPort,
         content: String(existingPort.content ?? "") + String(port.content ?? ""),
-        metadata: { ...existingPort.metadata, ...port.metadata }
+        metadata: { ...existingPort.metadata, ...port.metadata },
       });
     } else {
       // 普通覆盖

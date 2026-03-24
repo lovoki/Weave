@@ -96,8 +96,8 @@ export class ToolNode extends BaseNode<IAgentNodeContext> {
   /** 拦截器 skip 时：写入 workingMessages */
   protected async onSkipped(ctx: IAgentNodeContext): Promise<void> {
     const skipResult = {
-      ok: false,
-      content: "[SKIPPED by approval gate]",
+      ok: true, // 标记为 true 以允许流程继续，但内容为空
+      content: "", // “空的输出”
       metadata: { skippedByUser: true },
     };
 
@@ -107,9 +107,9 @@ export class ToolNode extends BaseNode<IAgentNodeContext> {
       nodeId: this.id,
       toolName: this.toolName,
       toolCallId: this.toolCallId,
-      toolStatus: "fail",
-      toolOk: false,
-      toolResultText: String(skipResult.content),
+      toolStatus: "skipped",
+      toolOk: true,
+      toolResultText: "(Skipped by user)",
     });
 
     ctx.workingMessages.push({
@@ -118,7 +118,14 @@ export class ToolNode extends BaseNode<IAgentNodeContext> {
       content: JSON.stringify(skipResult),
     });
 
-    this.setResult(false, "[SKIPPED by approval gate]");
+    // 👑 关键修复：同步更新状态存储，向后续节点返回“空的输出”
+    ctx.stateStore.setNodeOutput(this.id, {
+      ok: true,
+      content: "",
+      metadata: { skipped: true },
+    });
+
+    this.setResult(true, "");
   }
 
   /**
