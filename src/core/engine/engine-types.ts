@@ -11,6 +11,13 @@ import type { SnapshotStore } from "../../infrastructure/storage/snapshot-store.
 import type { ILogger } from "../ports/logger.js";
 import type { IBlobStore } from "../ports/blob-store.js";
 
+export interface IPauseSignal {
+  wait(): Promise<void>;
+  pause(): void;
+  resume(): void;
+  isPaused(): boolean;
+}
+
 export interface EngineContext {
   runId: string;
   dag: DagExecutionGraph;
@@ -22,4 +29,6 @@ export interface EngineContext {
   snapshotStore?: SnapshotStore;
   logger: ILogger;
   blobStore?: IBlobStore;
+  /** 暂停信号量，用于在调度 Tick 开始前挂起执行 */
+  pauseSignal?: IPauseSignal;
 }

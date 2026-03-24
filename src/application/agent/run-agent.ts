@@ -37,8 +37,39 @@ import type { RunContext, StepGateOptions } from "../session/run-context.js";
 import { PendingPromiseRegistry } from "../weave/pending-promise-registry.js";
 import { StepGateInterceptor } from "../weave/step-gate-interceptor.js";
 import { PluginManager } from "./plugin-manager.js";
-
 import { WeaveWalManager } from "../../infrastructure/wal/weave-wal-manager.js";
+import type { IPauseSignal } from "../../core/engine/engine-types.js";
+import type { InterceptDecision } from "../weave/interceptor.js";
+
+/** 
+ * 暂停控制器：实现引擎层的 IPauseSignal 协议 
+ */
+class PauseController implements IPauseSignal {
+  private _paused = false;
+  private _promise: Promise<void> | null = null;
+  private _resolve: (() => void) | null = null;
+
+  async wait(): Promise<void> {
+    if (this._paused) {
+      if (!this._promise) {
+        this._promise = new Promise<void>((res) => { this._resolve = res; });
+      }
+      return this._promise;
+    }
+  }
+
+  pause(): void { this._paused = true; }
+  resume(): void {
+    if (!this._paused) return;
+    this._paused = false;
+    if (this._resolve) {
+      this._resolve();
+      this._resolve = null;
+      this._promise = null;
+    }
+  }
+  isPaused(): boolean { return this._paused; }
+}
 
 // 从 event-types 重新导出，保持向后兼容
 export type { AgentRunEventType, AgentRunEvent } from "../../domain/event/event-types.js";
@@ -97,6 +128,11 @@ export class AgentRuntime extends EventEmitter {
   private readonly walDao: IWalDao;
   private readonly logger: ILogger;
   private readonly blobStore?: IBlobStore;
+
+  /** 管理当前正在运行的任务的挂起字典，key 为 runId */
+  private readonly pendingRegistryByRunId = new Map<string, PendingPromiseRegistry>();
+  /** 管理当前正在运行的任务的暂停信号量，key 为 runId */
+  private readonly pauseSignalByRunId = new Map<string, PauseController>();
 
   constructor(
     private readonly llmConfig: LlmConfig,
@@ -359,6 +395,11 @@ export class AgentRuntime extends EventEmitter {
 
     // Phase 3：拦截器基础设施
     const pendingRegistry = new PendingPromiseRegistry();
+    this.pendingRegistryByRunId.set(runId, pendingRegistry);
+
+    const pauseSignal = new PauseController();
+    this.pauseSignalByRunId.set(runId, pauseSignal);
+
     const interceptor = stepGate.enabled
       ? new StepGateInterceptor(pendingRegistry, { enabled: true })
       : undefined;
@@ -393,7 +434,8 @@ export class AgentRuntime extends EventEmitter {
       abortController,
       abortSignal: abortController.signal,
       interceptor,
-      pendingRegistry
+      pendingRegistry,
+      pauseSignal
     };
 
     // 初始化 DAG：InputNode（终态广播）→ llm-1（调度起点）
@@ -438,6 +480,8 @@ export class AgentRuntime extends EventEmitter {
         externalAbortSignal.removeEventListener("abort", abortFromExternal);
       }
       this.activeEventBus = undefined;
+      this.pendingRegistryByRunId.delete(runId);
+      this.pauseSignalByRunId.delete(runId);
       // 👑 销毁 WAL 管理器，触发强制刷盘
       walManager.destroy();
     }
@@ -453,6 +497,25 @@ export class AgentRuntime extends EventEmitter {
 
   private async sleep(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** 暂停指定任务的调度 */
+  pauseRun(runId: string): void {
+    const signal = this.pauseSignalByRunId.get(runId);
+    if (signal) signal.pause();
+  }
+
+  /** 恢复指定任务的调度 */
+  resumeRun(runId: string): void {
+    const signal = this.pauseSignalByRunId.get(runId);
+    if (signal) signal.resume();
+  }
+
+  /** 恢复指定节点在特定任务中的审批状态（传入审批结果） */
+  resumeNodeGate(runId: string, nodeId: string, decision: InterceptDecision): boolean {
+    const registry = this.pendingRegistryByRunId.get(runId);
+    if (!registry) return false;
+    return registry.resume(nodeId, decision);
   }
 
   private activeEventBus?: WeaveEventBus;

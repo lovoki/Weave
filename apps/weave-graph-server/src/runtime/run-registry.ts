@@ -20,6 +20,10 @@ export class RunRegistry {
     return !this.activeRunBySession.has(sessionId);
   }
 
+  getActiveRunIds(): string[] {
+    return Array.from(this.activeRunBySession.values());
+  }
+
   start(runId: string, sessionId: string, at: string): RunRecord {
     const record: RunRecord = {
       runId,

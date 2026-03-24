@@ -155,9 +155,7 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: var(--bg-surface);
     border-bottom: 1px solid var(--border-glass);
     padding: 12px 14px;
     margin: -14px -14px 12px -14px;

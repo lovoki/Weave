@@ -11,6 +11,7 @@ export interface StartRunCommand {
   userInput: string;
   sessionId: string;
   clientRequestId?: string;
+  stepMode?: boolean;
 }
 
 export interface StartRunResult {
@@ -33,6 +34,9 @@ export interface LoadRunEventsResult {
 export interface RuntimeBridge {
   startRun(command: StartRunCommand): Promise<StartRunResult>;
   abortRun(runId: string): Promise<AbortRunResult>;
+  pauseRun(runId: string): Promise<void>;
+  resumeRun(runId: string): Promise<void>;
+  resumeNodeGate(runId: string, nodeId: string, decision: { action: string; editedArgs?: any }): Promise<boolean>;
   loadRunEvents?(runId: string): Promise<LoadRunEventsResult | null>;
 }
 
@@ -128,12 +132,19 @@ export class LocalRuntimeBridge implements RuntimeBridge {
   async loadRunEvents(): Promise<LoadRunEventsResult | null> {
     return null;
   }
+
+  async pauseRun(): Promise<void> {}
+  async resumeRun(): Promise<void> {}
+  async resumeNodeGate(): Promise<boolean> { return false; }
 }
 
 interface AgentRuntimeLike {
   startSession: (sessionId: string) => void;
-  runOnceStream: (userInput: string, options?: { abortSignal?: AbortSignal }) => Promise<string>;
+  runOnceStream: (userInput: string, options?: { abortSignal?: AbortSignal; stepMode?: boolean; autoMode?: boolean }) => Promise<string>;
   on: (event: "event", listener: (evt: any) => void) => void;
+  pauseRun: (runId: string) => void;
+  resumeRun: (runId: string) => void;
+  resumeNodeGate: (runId: string, nodeId: string, decision: any) => boolean;
 }
 
 class AgentRuntimeBridge implements RuntimeBridge {
@@ -232,7 +243,7 @@ class AgentRuntimeBridge implements RuntimeBridge {
       runtime.on("event", onEvent);
 
       void runtime
-        .runOnceStream(command.userInput, { abortSignal: abortController.signal })
+        .runOnceStream(command.userInput, { abortSignal: abortController.signal, stepMode: command.stepMode, autoMode: true })
         .catch(() => {
           // 错误事件由 runtime event 通道广播，这里避免未处理拒绝。
         })
@@ -293,6 +304,27 @@ class AgentRuntimeBridge implements RuntimeBridge {
     });
 
     return { runId, events };
+  }
+
+  async pauseRun(runId: string): Promise<void> {
+    for (const runtime of this.runtimeBySession.values()) {
+      runtime.pauseRun(runId);
+    }
+  }
+
+  async resumeRun(runId: string): Promise<void> {
+    for (const runtime of this.runtimeBySession.values()) {
+      runtime.resumeRun(runId);
+    }
+  }
+
+  async resumeNodeGate(runId: string, nodeId: string, decision: any): Promise<boolean> {
+    for (const runtime of this.runtimeBySession.values()) {
+      if (runtime.resumeNodeGate(runId, nodeId, decision)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 

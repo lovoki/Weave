@@ -42,9 +42,13 @@ async function main(): Promise<void> {
     startRun: async (payload) => runtimeBridge.startRun({
       userInput: payload.userInput,
       sessionId: payload.sessionId ?? "",
-      clientRequestId: payload.clientRequestId
+      clientRequestId: payload.clientRequestId,
+      stepMode: payload.mode === "step"
     }),
     abortRun: async (runId) => runtimeBridge.abortRun(runId),
+    pauseRun: async (runId) => runtimeBridge.pauseRun(runId),
+    resumeRun: async (runId) => runtimeBridge.resumeRun(runId),
+    resumeNodeGate: async (runId, nodeId, decision) => runtimeBridge.resumeNodeGate(runId, nodeId, decision),
     replayRunEvents: async (runId) => {
       if (!runtimeBridge.loadRunEvents) {
         return null;

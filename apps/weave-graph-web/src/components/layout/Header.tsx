@@ -50,19 +50,9 @@ export const Header: React.FC<{
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, justifyContent: "center" }}>
         {activeDagId ? (
           <>
-            <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", background: "rgba(255,255,255,0.04)", padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.06)" }}>
               🔗 {activeDagId.slice(0, 16)}...
             </span>
-            {totalCount > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 72, height: 3, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${progressPct}%`, background: isComplete ? "linear-gradient(90deg, #3dc653, #38d8f8)" : "linear-gradient(90deg, #5aadff, #b48aff)", borderRadius: 2, transition: "width 0.4s var(--ease-out-quart)" }} />
-                </div>
-                <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: isComplete ? "#3dc653" : "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
-                  {successCount}/{totalCount}
-                </span>
-              </div>
-            )}
           </>
         ) : (
           <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.06em" }}>🌌 Weave Graph</span>

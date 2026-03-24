@@ -6,18 +6,19 @@ interface LeftPanelProps {
   dagOrder: string[];
   dags: any;
   activeDagId: string;
-  setActiveDag: (id: string) => void;
+  onSelectDag: (id: string) => void;
   isCollapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
+  onSendMessage: (text: string) => void;
 }
-
 export const LeftPanel: React.FC<LeftPanelProps> = ({
   dagOrder,
   dags,
   activeDagId,
-  setActiveDag,
+  onSelectDag,
   isCollapsed,
-  setCollapsed
+  setCollapsed,
+  onSendMessage
 }) => {
   return (
     <div
@@ -75,7 +76,8 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
             dagOrder={dagOrder}
             dags={dags}
             activeDagId={activeDagId}
-            onSelectDag={setActiveDag}
+            onSelectDag={onSelectDag}
+            onSendMessage={onSendMessage}
           />
           <Resizer side="left" defaultWidth={300} isCollapsed={isCollapsed} />
         </>

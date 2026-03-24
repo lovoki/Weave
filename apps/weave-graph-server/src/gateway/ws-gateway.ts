@@ -30,6 +30,28 @@ import type { AbortRunResult, StartRunResult } from "../runtime/runtime-bridge.j
 export interface GateDecision {
   action: "approve" | "edit" | "skip" | "abort";
   params?: string;
+  editedArgs?: Record<string, unknown>;
+}
+
+function parseEditedArgs(params?: string): Record<string, unknown> | undefined {
+  if (!params) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(params);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildGateDecision(action: GateDecision["action"], params?: string): GateDecision {
+  return {
+    action,
+    params,
+    editedArgs: action === "edit" ? parseEditedArgs(params) : undefined
+  };
 }
 
 export type ValidationHandler = (nodeId: string, params: string) => Promise<{ ok: boolean; error?: string }>;
@@ -37,6 +59,9 @@ export type ValidationHandler = (nodeId: string, params: string) => Promise<{ ok
 interface RunCommandHandlers {
   startRun?: (payload: StartRunPayload) => Promise<StartRunResult>;
   abortRun?: (runId: string) => Promise<AbortRunResult>;
+  pauseRun?: (runId: string) => Promise<void>;
+  resumeRun?: (runId: string) => Promise<void>;
+  resumeNodeGate?: (runId: string, nodeId: string, decision: GateDecision) => Promise<boolean>;
   replayRunEvents?: (runId: string) => Promise<Array<GraphEnvelope<unknown>> | null>;
 }
 
@@ -275,10 +300,11 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
               return;
             }
 
-            const commandInput: StartRunPayload = {
+            const commandInput: StartRunPayload & { stepMode?: boolean } = {
               userInput: inputText,
               sessionId,
-              clientRequestId: runPayload.clientRequestId
+              clientRequestId: runPayload.clientRequestId,
+              stepMode: runPayload.mode === "step"
             };
 
             const started = runCommandHandlers.startRun
@@ -432,6 +458,32 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
             return;
           }
 
+          if (type === "run.pause") {
+            const runId = (payload as { runId: string }).runId?.trim();
+            if (!runId) {
+              sendRpcError(ws, reqId, "INVALID_ARGUMENT", "runId 不能为空");
+              return;
+            }
+            if (runCommandHandlers.pauseRun) {
+              await runCommandHandlers.pauseRun(runId);
+            }
+            if (reqId) sendResponse(ws, reqId, true);
+            return;
+          }
+
+          if (type === "run.resume") {
+            const runId = (payload as { runId: string }).runId?.trim();
+            if (!runId) {
+              sendRpcError(ws, reqId, "INVALID_ARGUMENT", "runId 不能为空");
+              return;
+            }
+            if (runCommandHandlers.resumeRun) {
+              await runCommandHandlers.resumeRun(runId);
+            }
+            if (reqId) sendResponse(ws, reqId, true);
+            return;
+          }
+
           if (type === "gate.action") {
             const gatePayload = payload as GateActionPayload;
             const { gateId, action, params } = gatePayload;
@@ -445,9 +497,20 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
               }
             }
 
-            const decision: GateDecision = { action, params };
+            const decision = buildGateDecision(action, params);
             pendingGateDecisions.set(gateId, decision);
             console.log(`[graph-server] RPC gate.action received gateId=${gateId} action=${action}`);
+
+            // 👑 实时恢复机制：尝试调用桥接层恢复节点执行
+            if (runCommandHandlers.resumeNodeGate) {
+              for (const runId of runRegistry.getActiveRunIds()) {
+                const ok = await runCommandHandlers.resumeNodeGate(runId, gateId, decision);
+                if (ok) {
+                  console.log(`[graph-server] RPC gate.action active resume success: runId=${runId} gateId=${gateId}`);
+                  break;
+                }
+              }
+            }
 
             if (reqId) sendResponse(ws, reqId, true);
           } else {
@@ -469,10 +532,7 @@ export async function createGraphGateway(staticDir?: string): Promise<GraphGatew
       // 路径 B: 兼容旧版散装 JSON (向后兼容)
       const msg = rawData as { type?: string; gateId?: string; action?: string; params?: string };
       if (msg.type === "gate.action" && msg.gateId && msg.action) {
-        const decision: GateDecision = {
-          action: msg.action as GateDecision["action"],
-          params: msg.params
-        };
+        const decision = buildGateDecision(msg.action as GateDecision["action"], msg.params);
         pendingGateDecisions.set(msg.gateId, decision);
         console.log(`[graph-server] legacy gate.action received gateId=${msg.gateId} action=${msg.action}`);
       }

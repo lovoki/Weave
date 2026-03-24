@@ -19,6 +19,11 @@ export async function executeDag(dag: DagExecutionGraph, ctx: EngineContext): Pr
     // 检查全局 abort signal
     ctx.abortSignal?.throwIfAborted();
 
+    // 🛡️ 暂停检查：在启动新一轮 Tick 前挂起
+    if (ctx.pauseSignal) {
+      await ctx.pauseSignal.wait();
+    }
+
     const readyIds = dag.getReadyNodeIds().sort();
 
     if (readyIds.length === 0) {

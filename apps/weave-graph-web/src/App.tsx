@@ -66,6 +66,41 @@ const KIND_COLOR_MAP: Record<string, string> = {
   final: "#3dc653", system: "#6e7a90", input: "#38d8f8",
 };
 
+const START_RUN_TIMEOUT_MS = 12_000;
+
+const FRIENDLY_RPC_ERROR_BY_CODE: Record<string, string> = {
+  AGENT_BUSY: "当前会话已有任务执行中，请等待或先终止。",
+  INVALID_ARGUMENT: "请求参数无效，请检查输入后重试。",
+  RUN_NOT_FOUND: "目标运行不存在，可能已结束。",
+  RESYNC_REQUIRED: "数据游标已失效，正在自动重同步。"
+};
+
+function toFriendlyRpcError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const match = raw.match(/^([A-Z_]+):\s*(.*)$/);
+  if (match) {
+    const code = match[1] ?? "";
+    const detail = match[2] ?? "";
+    return FRIENDLY_RPC_ERROR_BY_CODE[code] ?? (detail || raw);
+  }
+
+  if (/session is busy/i.test(raw) || /AGENT_BUSY/i.test(raw)) {
+    return FRIENDLY_RPC_ERROR_BY_CODE.AGENT_BUSY;
+  }
+
+  return raw || "请求失败，请稍后重试。";
+}
+
+function withTimeout<T>(task: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    task
+      .then((value) => resolve(value))
+      .catch((error) => reject(error))
+      .finally(() => window.clearTimeout(timer));
+  });
+}
+
 function getPortTypeBadgeClass(portType?: string): string {
   if (portType === "json") return "json";
   if (portType === "messages") return "messages";
@@ -175,6 +210,7 @@ function GraphCanvas({ isWeavingStarted, setIsWeavingStarted }: { isWeavingStart
   const sendRpc = useGraphStore((s) => s.sendRpc);
   const createDraftRun = useGraphStore((s) => s.createDraftRun);
   const pendingApprovalNodeId = useGraphStore((s) => s.pendingApprovalNodeId);
+  const startRunInFlightRef = useRef(false);
 
   const { fitView } = useReactFlow();
 
@@ -519,8 +555,43 @@ function GraphCanvas({ isWeavingStarted, setIsWeavingStarted }: { isWeavingStart
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const tier = usePerformance();
 
+  const [weaveMode, setWeaveMode] = useState<"on" | "step">("on");
+
+  const activeRunId = useMemo(() => activeDag?.runId ?? "", [activeDag?.runId]);
+
+  const sendRunControl = useCallback(async (action: "pause" | "resume", runId: string) => {
+    const normalizedRunId = runId.trim();
+    if (!normalizedRunId) return;
+    if (wsStatus !== "connected") {
+      throw new Error("图服务连接未就绪，请稍后重试。");
+    }
+    const rpcType = action === "pause" ? "run.pause" : "run.resume";
+    await sendRpc(rpcType, { runId: normalizedRunId });
+  }, [sendRpc, wsStatus]);
+
+  const handlePauseRun = useCallback((runId: string) => {
+    void sendRunControl("pause", runId).catch((error) => {
+      console.warn("pause run failed", toFriendlyRpcError(error));
+    });
+  }, [sendRunControl]);
+
+  const handleResumeRun = useCallback((runId: string) => {
+    void sendRunControl("resume", runId).catch((error) => {
+      console.warn("resume run failed", toFriendlyRpcError(error));
+    });
+  }, [sendRunControl]);
+
   const handleSummonStart = useCallback(async (text: string) => {
-    // 连接未就绪时直接失败，让开屏回到可交互状态，避免进入只剩背景的过渡卡死。
+    const normalizedText = text.trim();
+    if (!normalizedText) {
+      throw new Error("输入不能为空。");
+    }
+
+    if (startRunInFlightRef.current) {
+      throw new Error("任务启动中，请稍候再试。");
+    }
+
+    // 连接未就绪时直接失败
     if (wsStatus !== "connected") {
       throw new Error("图服务连接未就绪，请稍后重试。");
     }
@@ -533,37 +604,32 @@ function GraphCanvas({ isWeavingStarted, setIsWeavingStarted }: { isWeavingStart
     }
 
     const payload: StartRunPayload = {
-      userInput: text,
+      userInput: normalizedText,
       sessionId,
-      clientRequestId: crypto.randomUUID()
+      clientRequestId: crypto.randomUUID(),
+      mode: weaveMode
     };
 
     try {
-      // 兜底超时：即使底层请求未进入 dispatched 计时，也要保证开屏不会无限悬挂。
-      const runInfo = await Promise.race<StartRunResponsePayload>([
+      startRunInFlightRef.current = true;
+      const runInfo = await withTimeout(
         sendRpc<StartRunResponsePayload>("start.run", payload),
-        new Promise<StartRunResponsePayload>((_, reject) => {
-          window.setTimeout(() => reject(new Error("启动超时，请检查图服务连接后重试。")), 12000);
-        })
-      ]);
-      createDraftRun(runInfo.runId, runInfo.runId, text, runInfo.sessionId);
+        START_RUN_TIMEOUT_MS,
+        "启动超时，请检查图服务连接后重试。"
+      );
+      createDraftRun(runInfo.runId, runInfo.runId, normalizedText, runInfo.sessionId);
       setIsWeavingStarted(true);
 
-      const subscribePayload: RunSubscribePayload = {
-        runId: runInfo.runId
-      };
-      // 订阅改为后台执行，避免订阅阶段阻塞布局切换。
+      const subscribePayload: RunSubscribePayload = { runId: runInfo.runId };
       void sendRpc<RunSubscribeResponsePayload>("run.subscribe", subscribePayload).catch((err) => {
-        console.warn("run.subscribe failed after start.run accepted", err);
+        console.warn("run.subscribe failed after start.run accepted", toFriendlyRpcError(err));
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("AGENT_BUSY")) {
-        throw new Error("当前会话已有任务执行中，请等待或先终止。");
-      }
-      throw new Error(message);
+      throw new Error(toFriendlyRpcError(error));
+    } finally {
+      startRunInFlightRef.current = false;
     }
-  }, [createDraftRun, sendRpc, setIsWeavingStarted, wsStatus]);
+  }, [createDraftRun, sendRpc, setIsWeavingStarted, wsStatus, weaveMode]);
 
   return (
     <div
@@ -594,9 +660,10 @@ function GraphCanvas({ isWeavingStarted, setIsWeavingStarted }: { isWeavingStart
             dagOrder={dagOrder}
             dags={dags}
             activeDagId={activeDagId}
-            setActiveDag={setActiveDag}
+            onSelectDag={setActiveDag}
             isCollapsed={leftCollapsed}
             setCollapsed={setLeftCollapsed}
+            onSendMessage={handleSummonStart}
           />
         )}
 
@@ -648,7 +715,15 @@ function GraphCanvas({ isWeavingStarted, setIsWeavingStarted }: { isWeavingStart
         </main>
 
         {isWeavingStarted && (
-          <RightPanel isCollapsed={rightCollapsed} setCollapsed={setRightCollapsed}>
+          <RightPanel 
+            isCollapsed={rightCollapsed} 
+            setCollapsed={setRightCollapsed}
+            weaveMode={weaveMode}
+            setWeaveMode={setWeaveMode}
+            activeRunId={activeRunId}
+            onPause={handlePauseRun}
+            onResume={handleResumeRun}
+          >
             {inspectorContent}
           </RightPanel>
         )}
@@ -676,7 +751,7 @@ function NodeDetailSection({ node }: { node: Node<GraphNodeData> }) {
         </div>
       )}
 
-      <div className="inspector-sticky-header">
+      <div style={{ padding: "14px 14px 12px", borderBottom: "1px solid var(--border-dim)", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: `${kindColor}18`, border: `1px solid ${kindColor}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <IconComp size={18} color={kindColor} />

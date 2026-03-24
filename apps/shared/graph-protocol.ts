@@ -211,6 +211,7 @@ export interface StartRunPayload {
   userInput: string;
   sessionId?: string;
   clientRequestId?: string;
+  mode?: "on" | "step";
 }
 
 /** 启动 run 的响应负载 */
@@ -261,7 +262,7 @@ export interface RpcErrorPayload {
 
 /** 前端向服务端发送的 RPC 请求信封 */
 export interface ClientMessageEnvelope<T = unknown> {
-  type: "start.run" | "run.abort" | "run.subscribe" | "gate.action" | "node.update_params" | "command.fork" | "snapshot.query";
+  type: "start.run" | "run.abort" | "run.pause" | "run.resume" | "run.subscribe" | "gate.action" | "node.update_params" | "command.fork" | "snapshot.query";
   reqId?: string;
   payload: T;
 }

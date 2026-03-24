@@ -2,7 +2,7 @@
  * 文件作用：聊天面板，展示每轮对话及状态徽章 — 高级暗色工作室风格，Emoji 状态图标，玻璃态气泡。
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DagGraph } from "../store/graph-store";
 
 interface ChatPanelProps {
@@ -10,10 +10,14 @@ interface ChatPanelProps {
   dags: Record<string, DagGraph>;
   activeDagId: string;
   onSelectDag: (dagId: string) => void;
+  onSendMessage: (text: string) => void;
 }
 
-export function ChatPanel({ dagOrder, dags, activeDagId, onSelectDag }: ChatPanelProps) {
+export function ChatPanel({ dagOrder, dags, activeDagId, onSelectDag, onSendMessage }: ChatPanelProps) {
   const threadRef = useRef<HTMLDivElement>(null);
+  const [inputValue, setInputValue] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
     const el = threadRef.current;
@@ -21,6 +25,28 @@ export function ChatPanel({ dagOrder, dags, activeDagId, onSelectDag }: ChatPane
   }, [dagOrder.length]);
 
   const orderedDags = [...dagOrder].reverse();
+
+  const handleSend = async () => {
+    if (!inputValue.trim() || isSending) return;
+    setIsSending(true);
+    setSendError(null);
+    try {
+      await onSendMessage(inputValue);
+      setInputValue("");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setSendError(message || "发送失败，请稍后重试。");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void handleSend();
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -133,6 +159,18 @@ export function ChatPanel({ dagOrder, dags, activeDagId, onSelectDag }: ChatPane
                 >
                   {userText}
                 </div>
+                {/* 进度条指示器 */}
+                {totalCount > 0 && isActive && (
+                  <div style={{ width: "100%", height: 2, background: "rgba(255,255,255,0.04)", borderRadius: 2, overflow: "hidden", marginTop: 4 }}>
+                    <div style={{ 
+                      height: "100%", 
+                      width: `${Math.round((successCount / totalCount) * 100)}%`, 
+                      background: successCount === totalCount ? "linear-gradient(90deg, #3dc653, #38d8f8)" : "linear-gradient(90deg, #5aadff, #b48aff)", 
+                      borderRadius: 2, 
+                      transition: "width 0.4s var(--ease-out-quart)" 
+                    }} />
+                  </div>
+                )}
               </div>
 
               {/* Agent 状态行 */}
@@ -215,7 +253,7 @@ export function ChatPanel({ dagOrder, dags, activeDagId, onSelectDag }: ChatPane
         })}
       </div>
 
-      {/* 输入栏（只读占位） */}
+      {/* 输入栏 */}
       <div
         style={{
           padding: "8px 10px",
@@ -227,40 +265,56 @@ export function ChatPanel({ dagOrder, dags, activeDagId, onSelectDag }: ChatPane
         }}
       >
         <textarea
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
           style={{
             flex: 1,
             background: "rgba(255,255,255,0.03)",
             border: "1px solid var(--border-dim)",
             borderRadius: 8,
-            color: "var(--text-muted)",
+            color: "var(--text-primary)",
             fontSize: 11,
             padding: "6px 10px",
             resize: "none",
             fontFamily: "var(--font-ui)",
-            cursor: "not-allowed",
             lineHeight: 1.5,
           }}
-          placeholder="后端集成中..."
-          disabled
+          placeholder="输入消息，继续对话..."
+          disabled={isSending}
           rows={2}
         />
         <button
+          onClick={() => void handleSend()}
           style={{
-            background: "rgba(90,173,255,0.08)",
+            background: inputValue.trim() && !isSending ? "var(--accent-primary)" : "rgba(90,173,255,0.08)",
             border: "1px solid rgba(90,173,255,0.12)",
-            color: "var(--text-muted)",
+            color: inputValue.trim() && !isSending ? "#fff" : "var(--text-muted)",
             borderRadius: 8,
             padding: "6px 12px",
             fontSize: 11,
-            cursor: "not-allowed",
+            cursor: inputValue.trim() && !isSending ? "pointer" : "not-allowed",
             whiteSpace: "nowrap",
             fontFamily: "var(--font-ui)",
+            transition: "all var(--duration-fast)",
           }}
-          disabled
+          disabled={!inputValue.trim() || isSending}
         >
-          发送
+          {isSending ? "发送中" : "发送"}
         </button>
       </div>
+      {sendError && (
+        <div style={{
+          padding: "4px 10px 8px",
+          color: "#ffab5e",
+          fontSize: 10,
+          lineHeight: 1.4,
+          borderTop: "1px solid rgba(255,171,94,0.2)",
+          background: "rgba(255,171,94,0.06)"
+        }}>
+          {sendError}
+        </div>
+      )}
     </div>
   );
 }
