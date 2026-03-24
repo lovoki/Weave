@@ -1,13 +1,18 @@
-node_modules/
+﻿node_modules/
 dist/
+
+# 本地环境与私有配置
 .env
 config/llm.config.json
+
+# 运行时输出
 logs/
 sessions/
 *.run.log
-dagent\logs
-dagent\.dagent
-CLAUDE.md
-GEMINI.md
+
+# Agent 本地目录与个人说明文件
 .claude/
 .dagent/
+.agent/
+CLAUDE.md
+GEMINI.md
