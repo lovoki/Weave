@@ -9,7 +9,6 @@ import type { IToolRegistry } from "../../core/ports/tool-registry.js";
 import type { IMemoryStore } from "../../core/ports/memory-store.js";
 import type { BaseNode } from "../../domain/nodes/base-node.js";
 import type { WeaveEventBus } from "../../domain/event/event-bus.js";
-import type { AgentLoopPlugin, AgentPluginRunContext } from "../agent/plugins/agent-plugin.js";
 import type OpenAI from "openai";
 import type { ToolApprovalRequest, ToolApprovalDecision } from "../../core/engine/runner-types.js";
 import type { INodeInterceptor } from "../weave/interceptor.js";

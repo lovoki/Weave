@@ -3,9 +3,8 @@
  */
 import type {
   AgentLoopPlugin,
-  AgentPluginOutput,
   AgentPluginOutputs,
-  AgentPluginRunContext
+  AgentPluginRunContext,
 } from "./plugins/agent-plugin.js";
 
 type PluginOutputCallback = (runId: string, output: AgentPluginOutputs) => void;
@@ -24,10 +23,9 @@ export async function executePluginHook<C>(
     const hook = plugin[hookName];
     if (typeof hook === "function") {
       // 必须绑定到插件实例，避免类方法中的 this（如 WeavePlugin.runStates）丢失。
-      const output = await (hook as (this: AgentLoopPlugin, ctx: C) => Promise<AgentPluginOutputs>).call(
-        plugin,
-        context
-      );
+      const output = await (
+        hook as (this: AgentLoopPlugin, ctx: C) => Promise<AgentPluginOutputs>
+      ).call(plugin, context);
       emitOutput(runId, output);
     }
   }

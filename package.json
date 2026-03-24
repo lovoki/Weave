@@ -10,6 +10,14 @@
     "dev:graph:logs": "powershell -ExecutionPolicy Bypass -Command \"Set-Location apps/weave-graph-server; if(Test-Path .run.log){Get-Content .run.log -Wait -Tail 80}else{Write-Host '.run.log not found, run dev:graph:all first'}\"",
     "start": "node --enable-source-maps dist/presentation/index.js",
     "build": "tsc -p tsconfig.json",
+    "lint": "eslint src --ext .ts --max-warnings 50",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"*.{json,yaml,yml,cjs,mjs}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.{json,yaml,yml,cjs,mjs}\"",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "prepare": "husky",
     "verify:step-gate": "node scripts/verify-step-gate.mjs",
     "verify:dag-matrix": "node scripts/verify-dag-matrix.mjs",
     "verify:graph-recovery": "tsx scripts/verify-graph-recovery.ts",
@@ -32,8 +40,17 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/react": "^19.2.14",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
     "playwright": "^1.54.2",
+    "prettier": "^3.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.0.0"
   }
 }

@@ -18,11 +18,11 @@ export function parseTurnInput(input: string, currentMode: WeaveMode): ParsedTur
       enableWeave: currentMode !== "off",
       stepMode: currentMode === "step",
       autoMode: currentMode === "auto",
-      question: ""
+      question: "",
     };
   }
 
-  const modeMatch = trimmed.match(/^(?:[\/／](weave|w)|(?:weave|w))\s+(on|off|step|observe|auto)$/i);
+  const modeMatch = trimmed.match(/^(?:[/／](weave|w)|(?:weave|w))\s+(on|off|step|observe|auto)$/i);
   if (modeMatch) {
     const modeRaw = modeMatch[2].toLowerCase();
     const modeValue: WeaveMode = modeRaw === "on" ? "observe" : (modeRaw as WeaveMode);
@@ -31,17 +31,17 @@ export function parseTurnInput(input: string, currentMode: WeaveMode): ParsedTur
       enableWeave: modeValue !== "off",
       stepMode: modeValue === "step",
       autoMode: modeValue === "auto",
-      question: ""
+      question: "",
     };
   }
 
-  const match = trimmed.match(/^(?:[\/／](weave|w)|(?:weave|w))\b\s*(.*)$/i);
+  const match = trimmed.match(/^(?:[/／](weave|w)|(?:weave|w))\b\s*(.*)$/i);
   if (!match) {
     return {
       enableWeave: currentMode !== "off",
       stepMode: currentMode === "step",
       autoMode: currentMode === "auto",
-      question: trimmed
+      question: trimmed,
     };
   }
 
@@ -50,6 +50,6 @@ export function parseTurnInput(input: string, currentMode: WeaveMode): ParsedTur
     enableWeave: true,
     stepMode: inlineMode === "step",
     autoMode: inlineMode === "auto",
-    question: (match[2] ?? "").trim()
+    question: (match[2] ?? "").trim(),
   };
 }

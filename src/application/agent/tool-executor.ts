@@ -5,7 +5,7 @@
 import type { IToolRegistry } from "../../core/ports/tool-registry.js";
 import type { ToolExecuteResult } from "../../infrastructure/tools/tool-types.js";
 import type { ILogger } from "../../core/ports/logger.js";
-import { summarizeText, tryParseJson, safeJsonStringify } from "../../core/utils/text-utils.js";
+import { tryParseJson, safeJsonStringify } from "../../core/utils/text-utils.js";
 import { extractErrorMessage } from "../../core/errors/agent-errors.js";
 
 // ─── 类型定义 ───
@@ -47,7 +47,7 @@ export async function executeToolWithTimeout(
       toolRegistry.execute(input.toolName, input.args, {
         sessionId: input.sessionId,
         runId: input.runId,
-        workspaceRoot: process.cwd()
+        workspaceRoot: process.cwd(),
       }),
       input.timeoutMs,
       `工具执行超时: ${input.toolName} 超过 ${input.timeoutMs}ms`
@@ -60,15 +60,15 @@ export async function executeToolWithTimeout(
       step: input.step,
       toolName: input.toolName,
       toolCallId: input.toolCallId,
-      errorMessage
+      errorMessage,
     });
     return {
       ok: false,
       content: errorMessage,
       metadata: {
         timeoutMs: input.timeoutMs,
-        timedOut: errorMessage.includes("超时")
-      }
+        timedOut: errorMessage.includes("超时"),
+      },
     };
   }
 }
@@ -113,7 +113,11 @@ export function extractJsonObject(text: string): Record<string, unknown> | null 
 export async function repairToolArgsByIntent(
   ticket: ToolRetryTicket,
   systemPrompt: string,
-  chatFn: (input: { systemPrompt: string; userMessage: string; abortSignal?: AbortSignal }) => Promise<string>,
+  chatFn: (input: {
+    systemPrompt: string;
+    userMessage: string;
+    abortSignal?: AbortSignal;
+  }) => Promise<string>,
   abortSignal?: AbortSignal
 ): Promise<ToolRepairResult> {
   const repairPrompt = [
@@ -122,32 +126,36 @@ export async function repairToolArgsByIntent(
     `intent=${ticket.intentSummary}`,
     `previousArgs=${safeJsonStringify(ticket.previousArgs)}`,
     `lastResult=${ticket.lastResult}`,
-    "要求：尽量最小修改参数；若无法修复则原样返回 previousArgs。"
+    "要求：尽量最小修改参数；若无法修复则原样返回 previousArgs。",
   ].join("\n");
 
   const raw = await chatFn({
     systemPrompt: "", // 工具修复不需要系统提示词
     userMessage: repairPrompt,
-    abortSignal
+    abortSignal,
   });
 
   const parsed = extractJsonObject(raw);
   return {
     repairedArgs: parsed,
-    llmOutput: raw
+    llmOutput: raw,
   };
 }
 
 // ─── 内部工具 ───
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<T>((_resolve, reject) => {
         timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
-      })
+      }),
     ]);
   } finally {
     if (timer) {

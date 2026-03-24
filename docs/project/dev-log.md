@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-03-24 · Entry 013 · 工业级重构基础设施初始化：ESLint + Vitest + src/contracts/ + AI Coding 方法论
+
+### 变更范围
+- `RULES.md`、`RULES_HOT.md`、`ANTI_PATTERNS.md`（项目根目录，AI Coding 方法论物理化）
+- `docs/refactor/`（新建目录：REFACTOR_INDEX.md + 11 个阶段计划文档）
+- `src/contracts/`（新建契约层：engine.ts、agent.ts、storage.ts、protocol.ts）
+- `src/core/__tests__/`、`src/domain/__tests__/`、`src/application/__tests__/`、`src/infrastructure/__tests__/`（BDD 测试骨架，61 个空 it()）
+- `src/core/README.md`、`src/domain/README.md`、`src/application/README.md`、`src/infrastructure/README.md`（分层文档）
+- `.eslintrc.cjs`、`.prettierrc.json`（代码质量工具配置）
+- `.github/workflows/ci.yml`（GitHub Actions CI）
+- `.husky/pre-commit`、`.lintstagedrc.json`（提交前钩子）
+- `vitest.config.ts`（测试框架配置）
+- `package.json`（新增 lint/format/test/prepare 脚本 + 7 个 devDependencies）
+- 修复存量 lint 错误：`llm-node.ts`（let→const, 移除无用 try/catch）、`event-bus.ts`（let→const）、`weave-mode.ts`（regex 转义）、`tui-helpers.ts`（eslint-disable 注释）等
+
+### 做了什么
+- 物理化 AI Coding 方法论（RULES.md 8 大类规范 + RULES_HOT.md 15 条热区规则 + ANTI_PATTERNS.md 8 个结构化错题）
+- 建立 src/contracts/ 契约层（Zod-First：先 Schema 再 z.infer，零业务实现）
+- 初始化 61 个 BDD 测试骨架（空 it() = 验收标准，`pnpm test:run` 全绿）
+- 配置 ESLint + Prettier（pnpm lint 0 error 0 warning）
+- 配置 GitHub Actions CI（build + lint + test 自动化）
+- 配置 husky + lint-staged（提交前自动 lint）
+- 修复 8 个存量 lint 错误（`prefer-const`、`no-useless-catch`、`no-unused-vars` 等）
+
+### 为什么这样做
+项目已完成原型验证阶段（架构 88/100），但测试工程 18/100、CI 10/100、代码质量 20/100 三大短板严重制约工业化。
+本次任务建立全套工程基础设施，落地用户的 AI Coding 方法论（规范、错误积累、接口契约物理化为项目文件），
+使后续每轮 AI 编码都能自动参照规范和错误积累，避免重复踩坑。
+
+### 关键决策
+- `no-explicit-any` 设为 `off`（而非 error）：现有代码有大量合理的 any 用法，渐进式在 P1-1 收紧，避免初期阻断工程
+- `--max-warnings 50`（而非 0）：同理，先建立基线，逐步降至 0
+- 契约层 Zod-First：类型通过 z.infer 导出，确保运行时 Schema 与 TypeScript 类型永不漂移
+- 空 it() 骨架优于 ACCEPTANCE_CRITERIA.md：零维护成本，直接可运行，AI 只需填充实现
+
 ## 2026-03-19 · Entry 012 · 调度引擎重构：EngineContext/BaseNode 泛型化 + TurnEngineBusAdapter + 流式旁路
 
 ### 变更范围

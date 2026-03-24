@@ -1,6 +1,6 @@
-import type { IWalDao } from '../../application/ports/wal-dao.js';
-import type { AgentRunEvent } from '../../domain/event/event-types.js';
-import { stringify, parse } from 'flatted';
+import type { IWalDao } from "../../application/ports/wal-dao.js";
+import type { AgentRunEvent } from "../../domain/event/event-types.js";
+import { stringify, parse } from "flatted";
 
 /**
  * 文件作用：WeaveWalManager — 预写式日志管理器（拦截器层）。
@@ -30,7 +30,7 @@ export class WeaveWalManager {
     // 🛡️ 防守型深拷贝，避免污染原始事件和内存总线
     const eventCopy: AgentRunEvent = {
       ...event,
-      payload: event.payload ? parse(stringify(event.payload)) : undefined
+      payload: event.payload ? parse(stringify(event.payload)) : undefined,
     };
 
     // 1. 自动维护拓扑边
@@ -49,7 +49,7 @@ export class WeaveWalManager {
   }
 
   private handleTopology(event: AgentRunEvent): void {
-    if (event.type === 'engine.edge.created') {
+    if (event.type === "engine.edge.created") {
       const p = event.payload;
       this.dao.insertEdge(event.runId, p.fromId, p.toId, p.kind);
     }
@@ -69,26 +69,26 @@ export class WeaveWalManager {
    * 递归脱水：发现长文本 -> 写入黑板 -> 替换为引用
    */
   private recursiveDehydrate(obj: any, runId: string): void {
-    if (!obj || typeof obj !== 'object') return;
+    if (!obj || typeof obj !== "object") return;
 
     for (const key in obj) {
       const val = obj[key];
-      
+
       // 只有长度超过 200 字符的才进黑板
-      if (typeof val === 'string' && val.length > 200 && !val.startsWith('[[REF:bb_')) {
+      if (typeof val === "string" && val.length > 200 && !val.startsWith("[[REF:bb_")) {
         const blackboardId = `bb_${runId}_${Date.now()}_${key}`;
-        
+
         // 立即同步写入黑板
         this.dao.insertBlackboardMessage(
           blackboardId,
           this.sessionId,
-          'content', // 默认角色
+          "content", // 默认角色
           val
         );
 
         // 替换为引用指针
         obj[key] = `[[REF:${blackboardId}]]`;
-      } else if (typeof val === 'object' && val !== null) {
+      } else if (typeof val === "object" && val !== null) {
         this.recursiveDehydrate(val, runId);
       }
     }
@@ -107,32 +107,39 @@ export class WeaveWalManager {
       for (const e of events) {
         // 🛡️ 类型安全地提取 nodeId
         const payload = e.payload as any;
-        const nodeId = (payload && typeof payload === 'object' && 'nodeId' in payload) 
-          ? String(payload.nodeId) 
-          : null;
+        const nodeId =
+          payload && typeof payload === "object" && "nodeId" in payload
+            ? String(payload.nodeId)
+            : null;
 
         this.dao.insertWalEvent({
           execution_id: e.runId,
           node_id: nodeId,
           event_type: e.type,
-          payload: stringify(e.payload)
+          payload: stringify(e.payload),
         });
       }
     } catch (err) {
       // 🛡️ 发生异常时，将数据放回队首，避免静默丢失
       this.eventQueue.unshift(...events);
-      console.error('[WeaveWalManager] Flush WAL failed:', err);
+      console.error("[WeaveWalManager] Flush WAL failed:", err);
     }
   }
 
   private setupGracefulShutdown(): void {
-    const handler = (signal: string) => {
-      // 这里的日志输出在某些环境下可能看不到，但逻辑会执行
+    // handler 和 signal 参数保留用于潜在的日志扩展，暂时不使用
+    const _handler = (_signal: string) => {
       this.flush();
     };
     // 使用 once 确保只执行一次，且不阻塞系统默认行为
-    process.once('SIGINT', () => { this.flush(); process.exit(0); });
-    process.once('SIGTERM', () => { this.flush(); process.exit(0); });
+    process.once("SIGINT", () => {
+      this.flush();
+      process.exit(0);
+    });
+    process.once("SIGTERM", () => {
+      this.flush();
+      process.exit(0);
+    });
   }
 
   /**

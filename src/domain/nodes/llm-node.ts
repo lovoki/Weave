@@ -59,30 +59,24 @@ export class LlmNode extends BaseNode<RunContext> {
       nodeId: this.id,
       sessionId: ctx.sessionId,
       turnIndex: ctx.turnIndex,
-      modelToolCount: ctx.toolRegistry.listModelTools().length
+      modelToolCount: ctx.toolRegistry.listModelTools().length,
     });
 
     // 🛡️ 架构师建议：Plugin 逻辑已上移至 Layer 3，节点不再感知插件。
-    let effectiveSystemPrompt = ctx.systemPrompt;
+    const effectiveSystemPrompt = ctx.systemPrompt;
 
-    let assistantMessage: OpenAI.Chat.Completions.ChatCompletionMessage | undefined;
-
-    try {
-      // LLM 调用（流式旁路：onDelta 广播至引擎事件总线，供 Web UI 实时展示）
-      assistantMessage = await ctx.llmClient.chatWithTools(
-        {
-          systemPrompt: effectiveSystemPrompt,
-          messages: ctx.workingMessages,
-          tools: ctx.toolRegistry.listModelTools(),
-          abortSignal: ctx.abortSignal
-        },
-        {
-          onDelta: (delta) => ctx.dag.getEngineEventBus()?.onNodeStreamDelta?.(this.id, delta)
-        }
-      );
-    } catch (error) {
-      throw error;
-    }
+    // LLM 调用（流式旁路：onDelta 广播至引擎事件总线，供 Web UI 实时展示）
+    const assistantMessage = await ctx.llmClient.chatWithTools(
+      {
+        systemPrompt: effectiveSystemPrompt,
+        messages: ctx.workingMessages,
+        tools: ctx.toolRegistry.listModelTools(),
+        abortSignal: ctx.abortSignal,
+      },
+      {
+        onDelta: (delta) => ctx.dag.getEngineEventBus()?.onNodeStreamDelta?.(this.id, delta),
+      }
+    );
 
     // 更新可视化数据
     this.setResponse(assistantMessage.content, assistantMessage.tool_calls ?? []);
@@ -93,8 +87,8 @@ export class LlmNode extends BaseNode<RunContext> {
       content: assistantMessage.content ?? "",
       metadata: {
         toolCallCount: assistantMessage.tool_calls?.length ?? 0,
-        step: this.step
-      }
+        step: this.step,
+      },
     });
 
     const toolCalls = assistantMessage.tool_calls ?? [];
@@ -102,13 +96,16 @@ export class LlmNode extends BaseNode<RunContext> {
     if (toolCalls.length === 0) {
       // 无工具调用 → 添加 FinalNode
       const finalNode = new FinalNode(`final-${this.step}`, assistantMessage.content ?? "");
-      ctx.dag.addNode({ id: finalNode.id, type: "final", status: "pending" }, finalNode.freezeSnapshot());
+      ctx.dag.addNode(
+        { id: finalNode.id, type: "final", status: "pending" },
+        finalNode.freezeSnapshot()
+      );
       ctx.dag.addEdge(this.id, finalNode.id);
       ctx.dag.addDataEdge({
         fromNodeId: this.id,
         toNodeId: finalNode.id,
         fromKey: "content",
-        toKey: "finalText"
+        toKey: "finalText",
       });
       ctx.nodeRegistry.set(finalNode.id, finalNode);
       return; // → BaseNode markSuccess
@@ -118,13 +115,16 @@ export class LlmNode extends BaseNode<RunContext> {
     ctx.workingMessages.push({
       role: "assistant",
       content: assistantMessage.content ?? "",
-      tool_calls: toolCalls
+      tool_calls: toolCalls,
     });
 
     const toolNodeIds: string[] = [];
     for (let i = 0; i < toolCalls.length; i++) {
       const tc = toolCalls[i];
-      const parsedArgs = (tryParseJson(tc.function.arguments || "{}") ?? {}) as Record<string, unknown>;
+      const parsedArgs = (tryParseJson(tc.function.arguments || "{}") ?? {}) as Record<
+        string,
+        unknown
+      >;
       const toolNodeId = `tool-${this.step}-${i + 1}`;
 
       const toolNode = new ToolNode(toolNodeId, {
@@ -133,16 +133,19 @@ export class LlmNode extends BaseNode<RunContext> {
         args: parsedArgs,
         intent: assistantMessage.content ?? "",
         maxRetries: ctx.defaultToolRetries,
-        step: this.step
+        step: this.step,
       });
 
-      ctx.dag.addNode({ id: toolNode.id, type: "tool", status: "pending" }, toolNode.freezeSnapshot());
+      ctx.dag.addNode(
+        { id: toolNode.id, type: "tool", status: "pending" },
+        toolNode.freezeSnapshot()
+      );
       ctx.dag.addEdge(this.id, toolNode.id);
       ctx.dag.addDataEdge({
         fromNodeId: this.id,
         toNodeId: toolNode.id,
         fromKey: "content",
-        toKey: "llmDecision"
+        toKey: "llmDecision",
       });
       ctx.nodeRegistry.set(toolNode.id, toolNode);
       toolNodeIds.push(toolNodeId);
@@ -151,29 +154,38 @@ export class LlmNode extends BaseNode<RunContext> {
     if (this.step + 1 <= ctx.maxSteps) {
       // 添加下一个 LLM 节点，等待所有工具完成
       const nextLlmNode = new LlmNode(`llm-${this.step + 1}`, { step: this.step + 1 });
-      ctx.dag.addNode({ id: nextLlmNode.id, type: "llm", status: "pending" }, nextLlmNode.freezeSnapshot());
+      ctx.dag.addNode(
+        { id: nextLlmNode.id, type: "llm", status: "pending" },
+        nextLlmNode.freezeSnapshot()
+      );
       for (let i = 0; i < toolNodeIds.length; i++) {
         ctx.dag.addEdge(toolNodeIds[i], nextLlmNode.id);
         ctx.dag.addDataEdge({
           fromNodeId: toolNodeIds[i],
           toNodeId: nextLlmNode.id,
           fromKey: "content",
-          toKey: `tool_${i + 1}`
+          toKey: `tool_${i + 1}`,
         });
       }
       ctx.nodeRegistry.set(nextLlmNode.id, nextLlmNode);
     } else {
       // 达到最大步数 → 添加兜底 FinalNode
       const fallbackFinalId = `final-max-${this.step}`;
-      const fallbackFinal = new FinalNode(fallbackFinalId, "已达到最大工具调用步数，请缩小问题范围后重试。");
-      ctx.dag.addNode({ id: fallbackFinalId, type: "final", status: "pending" }, fallbackFinal.freezeSnapshot());
+      const fallbackFinal = new FinalNode(
+        fallbackFinalId,
+        "已达到最大工具调用步数，请缩小问题范围后重试。"
+      );
+      ctx.dag.addNode(
+        { id: fallbackFinalId, type: "final", status: "pending" },
+        fallbackFinal.freezeSnapshot()
+      );
       for (const toolNodeId of toolNodeIds) {
         ctx.dag.addEdge(toolNodeId, fallbackFinalId);
         ctx.dag.addDataEdge({
           fromNodeId: toolNodeId,
           toNodeId: fallbackFinalId,
           fromKey: "content",
-          toKey: toolNodeId
+          toKey: toolNodeId,
         });
       }
       ctx.nodeRegistry.set(fallbackFinalId, fallbackFinal);

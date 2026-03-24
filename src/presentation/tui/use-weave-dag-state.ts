@@ -10,7 +10,7 @@ import type {
   ApprovalPendingEvent,
   ApprovalResolvedEvent,
   WeaveDagDetailEvent,
-  WeaveDagEvent
+  WeaveDagEvent,
 } from "./agent-ui-events.js";
 
 export interface WeaveDagNodeItem {
@@ -54,8 +54,8 @@ export function useWeaveDagState(gateway: AgentUiEventGateway): WeaveDagNodeItem
               pausedDurationMs: 0,
               retryCurrent: undefined,
               retryMax: undefined,
-              details: []
-            }
+              details: [],
+            },
           ];
         }
 
@@ -81,13 +81,18 @@ export function useWeaveDagState(gateway: AgentUiEventGateway): WeaveDagNodeItem
           status: event.status,
           endedAtMs:
             event.status === "success" || event.status === "fail"
-              ? current.endedAtMs ?? now
+              ? (current.endedAtMs ?? now)
               : undefined,
           updatedAtMs: now,
-          pausedAtMs: event.status === "success" || event.status === "fail" ? undefined : current.pausedAtMs,
+          pausedAtMs:
+            event.status === "success" || event.status === "fail" ? undefined : current.pausedAtMs,
           pausedDurationMs: (current.pausedDurationMs ?? 0) + extraPausedMs,
-          retryCurrent: event.status === "success" || event.status === "fail" ? undefined : current.retryCurrent,
-          retryMax: event.status === "success" || event.status === "fail" ? undefined : current.retryMax
+          retryCurrent:
+            event.status === "success" || event.status === "fail"
+              ? undefined
+              : current.retryCurrent,
+          retryMax:
+            event.status === "success" || event.status === "fail" ? undefined : current.retryMax,
         };
         return next;
       });
@@ -122,13 +127,15 @@ export function useWeaveDagState(gateway: AgentUiEventGateway): WeaveDagNodeItem
           details,
           retryCurrent,
           retryMax,
-          updatedAtMs: Date.now()
+          updatedAtMs: Date.now(),
         };
         return next;
       });
     };
 
-    const findActiveNode = (prev: WeaveDagNodeItem[]): { node: WeaveDagNodeItem; index: number } | null => {
+    const _findActiveNode = (
+      prev: WeaveDagNodeItem[]
+    ): { node: WeaveDagNodeItem; index: number } | null => {
       const target = [...prev]
         .filter((node) => node.status === "running" || node.status === "waiting")
         .sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0];
@@ -159,7 +166,7 @@ export function useWeaveDagState(gateway: AgentUiEventGateway): WeaveDagNodeItem
           ...next[index],
           pausedAtMs: undefined,
           pausedDurationMs: (next[index].pausedDurationMs ?? 0) + pausedMs,
-          updatedAtMs: now
+          updatedAtMs: now,
         };
         return next;
       });

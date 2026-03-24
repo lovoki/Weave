@@ -41,7 +41,7 @@ export class PluginManager {
     });
 
     // 窃听流式输出，用于特定的日志记录插件（可选）
-    this.bus.on("engine.node.stream", (event) => {
+    this.bus.on("engine.node.stream", (_event) => {
       // 可以在此处触发类似 onStreamChunk 的新钩子
     });
   }

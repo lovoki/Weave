@@ -39,7 +39,10 @@ export function areSetsEqual(a: Set<string>, b: Set<string>): boolean {
 
 // ─── 键盘输入检测 ───
 
-export function isBackspaceKey(value: string, key: { backspace?: boolean; delete?: boolean; ctrl?: boolean }): boolean {
+export function isBackspaceKey(
+  value: string,
+  key: { backspace?: boolean; delete?: boolean; ctrl?: boolean }
+): boolean {
   if (key.backspace) {
     return true;
   }
@@ -64,6 +67,7 @@ export function isPrintableInput(value: string): boolean {
     return false;
   }
 
+  // eslint-disable-next-line no-control-regex
   return !/[\x00-\x1F\x7F]/.test(value);
 }
 
@@ -89,7 +93,8 @@ export function renderInputWithCursor(value: string, cursor: number, maxLength: 
     prefixWidth[i + 1] = prefixWidth[i] + charDisplayWidth(withCursorChars[i]);
   }
 
-  const rangeWidth = (start: number, endExclusive: number): number => prefixWidth[endExclusive] - prefixWidth[start];
+  const rangeWidth = (start: number, endExclusive: number): number =>
+    prefixWidth[endExclusive] - prefixWidth[start];
   const buildDisplay = (left: number, rightExclusive: number): string => {
     const hasLeft = left > 0;
     const hasRight = rightExclusive < withCursorChars.length;
@@ -107,6 +112,7 @@ export function renderInputWithCursor(value: string, cursor: number, maxLength: 
     return rangeWidth(nextLeft, nextRightExclusive) + ellipsisCost <= maxLength;
   };
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     let changed = false;
 
@@ -155,7 +161,12 @@ export function fitInputPreview(text: string, maxLength: number): string {
   return `…${kept.reverse().join("")}`;
 }
 
-export function buildInputDisplayText(input: string, cursor: number, maxLength: number, idlePlaceholder: string): string {
+export function buildInputDisplayText(
+  input: string,
+  cursor: number,
+  maxLength: number,
+  idlePlaceholder: string
+): string {
   if (input) {
     return renderInputWithCursor(input, cursor, maxLength);
   }

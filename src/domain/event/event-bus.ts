@@ -2,7 +2,12 @@
  * 文件作用：WeaveEventBus — 统一事件分发总线，自动注入 runId/sessionId/turnIndex 元数据。
  */
 import { EventEmitter } from "node:events";
-import type { AgentRunEventType, AgentRunEvent, AgentPluginOutput, AgentPluginOutputs } from "./event-types.js";
+import type {
+  AgentRunEventType,
+  AgentRunEvent,
+  AgentPluginOutput,
+  AgentPluginOutputs,
+} from "./event-types.js";
 
 /** 拦截器接口定义 */
 export interface EventInterceptor {
@@ -32,13 +37,13 @@ export class WeaveEventBus extends EventEmitter {
   }
 
   dispatch(type: AgentRunEventType, payload?: AgentRunEvent["payload"]): void {
-    let event = {
+    const event = {
       type,
       runId: this.meta.runId,
       timestamp: new Date().toISOString(),
       schemaVersion: "dagent.agent.event.v1",
       eventId: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-      payload: (payload ?? {}) as AgentRunEvent["payload"]
+      payload: (payload ?? {}) as AgentRunEvent["payload"],
     } as AgentRunEvent;
 
     // 👑 顶级架构设计：Write-Ahead 拦截劫持
@@ -59,7 +64,7 @@ export class WeaveEventBus extends EventEmitter {
       this.dispatch("plugin.output", {
         pluginName: item.pluginName,
         outputType: item.outputType,
-        outputText: item.outputText
+        outputText: item.outputText,
       });
     }
   }
