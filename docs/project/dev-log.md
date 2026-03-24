@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-03-24 · Entry 015 · P1-1 完成：消除生产代码 as any，启用严格类型检查
+
+### 变更范围
+- `src/infrastructure/wal/wal-dao.ts`（import 迁移 + as any → 类型化断言）
+- `src/infrastructure/wal/weave-wal-manager.ts`（obj:any → Record<string,unknown>）
+- `src/infrastructure/wal/replay-engine.ts`（rehydratePayload/replayEvent 类型安全访问）
+- `src/application/agent/plugin-manager.ts`（payload 类型化 + keyof AgentLoopPlugin）
+- `src/application/weave/step-gate-interceptor.ts`（ToolNodeShape 接口替代 node as any）
+- `src/application/ports/wal-dao.ts`（改为 contracts/storage re-export）
+- `src/contracts/storage.ts`（IWalDao 新增 getEdges 方法）
+- `.eslintrc.cjs`、`package.json`（no-explicit-any off→warn，--max-warnings 50→0）
+
+### 做了什么
+- 消除生产代码全部 20 处 `as any`，改用精确类型断言或 `Record<string,unknown>`
+- 新增 `EdgeRecord` 接口和 `WalDao.getEdges()` 方法，消除对私有字段的绕过访问
+- `step-gate-interceptor` 定义 `ToolNodeShape` 最小接口，替代 4 处 `(node as any).toolName`
+- `application/ports/wal-dao.ts` 改为 re-export，`contracts/storage.ts` 成为单一真相源
+- ESLint `no-explicit-any` warn 启用，`--max-warnings` 从 50 降至 0
+
+### 为什么这样做
+`as any` 是跨层类型下渗的主要路径，消除它意味着类型错误在编译期被捕获。
+
+### 关键决策
+WAL 反序列化场景（`replay-engine.ts`）保留 `as string` / `as DagNodeOutputRecord` 等精确断言而非 `as any`——编译期无法验证持久化数据的 shape，但明确表达预期类型比 `as any` 语义更清晰
+
+---
+
 ## 2026-03-24 · Entry 014 · P0-1 完成：61 个 BDD 测试全绿 + node:sqlite Vite 兼容修复
 
 ### 变更范围

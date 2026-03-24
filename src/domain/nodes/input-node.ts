@@ -33,7 +33,7 @@ export class InputNode extends BaseNode<EngineContext> {
   }
 
   async getOutputPorts(ctx: EngineContext): Promise<GraphPort[]> {
-    if (!this.userQuery) return [];
+    if (this.userQuery === undefined) return [];
     return [await this.makePort(ctx, "userQuery", "text", this.userQuery)];
   }
 }

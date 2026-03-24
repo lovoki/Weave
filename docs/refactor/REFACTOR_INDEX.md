@@ -13,12 +13,12 @@
 
 | ID | 名称 | 阶段 | 状态 | 分支 |
 |----|------|------|------|------|
-| P0-2 | ESLint + Prettier + no-restricted-imports | 阶段0 | ⏳ 待执行 | `refactor/P0-2-lint-format` |
-| P0-3 | GitHub Actions CI | 阶段0 | ⏳ 待执行 | `refactor/P0-3-cicd` |
-| P0-4 | husky + lint-staged | 阶段0 | ⏳ 待执行 | `refactor/P0-4-precommit` |
-| P1-1 | src/contracts/ + 架构违规修复 + Zod | 阶段1 | ⏳ 待执行 | `refactor/P1-1-contracts` |
+| P0-2 | ESLint + Prettier + no-restricted-imports | 阶段0 | ✅ 完成 (Entry 013) | main |
+| P0-3 | GitHub Actions CI | 阶段0 | ✅ 完成 (Entry 013) | main |
+| P0-4 | husky + lint-staged | 阶段0 | ✅ 完成 (Entry 013) | main |
+| P0-1 | Vitest 单元测试 61 个用例全绿 | 阶段2 | ✅ 完成 (Entry 014) | main |
+| P1-1 | src/contracts/ + 架构违规修复 + as any 消除 | 阶段1 | ✅ 完成 (Entry 015) | main |
 | P1-3 | Web Worker + React Flow 视口优化 | 阶段1 | ⏳ 待执行 | `refactor/P1-3-frontend-perf` |
-| P0-1 | Vitest 单元测试骨架 | 阶段2 | ⏳ 待执行 | `refactor/P0-1-testing` |
 | P2-1 | 结构化日志（JSON 模式） | 阶段3 | ⏳ 待执行 | `refactor/P2-1-logging` |
 | P2-2 | 全链路 TraceId | 阶段3 | ⏳ 待执行 | `refactor/P2-2-tracing` |
 | P2-3 | 安全加固 | 阶段3 | ⏳ 待执行 | `refactor/P2-3-security` |

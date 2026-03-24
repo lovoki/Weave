@@ -201,11 +201,15 @@ export class LlmNode extends BaseNode<IAgentNodeContext> {
 
   async getInputPorts(ctx: IAgentNodeContext): Promise<GraphPort[]> {
     const ports: GraphPort[] = [];
-    if (this.systemPrompt) {
-      ports.push(await this.makePort(ctx, "systemPrompt", "text", this.systemPrompt));
+    // 🛡️ 防御竞态：若 doExecute 尚未运行，则从 ctx 回退获取输入快照
+    const effectiveSystemPrompt = this.systemPrompt ?? ctx.systemPrompt;
+    const effectiveMessages = this.messages ?? ctx.workingMessages;
+
+    if (effectiveSystemPrompt) {
+      ports.push(await this.makePort(ctx, "systemPrompt", "text", effectiveSystemPrompt));
     }
-    if (this.messages?.length) {
-      ports.push(await this.makePort(ctx, "messages", "messages", this.messages));
+    if (effectiveMessages?.length) {
+      ports.push(await this.makePort(ctx, "messages", "messages", effectiveMessages));
     }
     return ports;
   }

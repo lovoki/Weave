@@ -59,7 +59,8 @@ export class FinalNode extends BaseNode<EngineContext> {
   }
 
   async getOutputPorts(ctx: EngineContext): Promise<GraphPort[]> {
-    if (!this.responseText) return [];
+    // 允许空字符串输出，只要 responseText 被设置过（非 undefined）
+    if (this.responseText === undefined) return [];
     return [await this.makePort(ctx, "responseText", "text", this.responseText)];
   }
 }
